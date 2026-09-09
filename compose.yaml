@@ -1,0 +1,7 @@
+services:
+  game:
+    image: coworld-overfished:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
+    platform: linux/amd64

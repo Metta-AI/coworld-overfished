@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Overfished</title>
+<link rel="stylesheet" href="viewer.css">
+</head>
+<body>
+<div id="app" class="app">
+  <div class="stage">
+    <svg id="painting" class="painting" viewBox="0 0 1200 800" preserveAspectRatio="xMidYMid meet" role="img" aria-label="The lake"></svg>
+    <div id="caption" class="caption" hidden></div>
+    <div id="overlay" class="overlay">Loading replay…</div>
+  </div>
+  <aside id="panel" class="panel">
+    <header class="masthead">
+      <h1>Overfished</h1>
+      <div id="eyebrow" class="eyebrow">—</div>
+    </header>
+    <section class="lake-line">
+      <div class="eyebrow">Lake <span class="muted">(hidden from the fishers)</span></div>
+      <div id="lake-text" class="lake-text">—</div>
+      <div class="lake-bar"><div id="lake-fill" class="lake-fill"></div><div id="lake-threshold" class="lake-threshold"></div></div>
+    </section>
+    <section class="ledger">
+      <div class="eyebrow">Ledger</div>
+      <table id="ledger-table">
+        <thead><tr><th class="num">#</th><th>Fisher</th><th class="num">Fish</th><th class="num">Last catch</th><th class="num">Total</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </section>
+    <section class="council">
+      <div class="eyebrow" id="council-title">Council</div>
+      <div id="council-body" class="council-body"><p class="empty">No council yet.</p></div>
+    </section>
+    <footer id="transport" class="transport">
+      <button id="play" class="btn" type="button" aria-label="Play or pause">Pause</button>
+      <button id="speed" class="btn secondary" type="button" aria-label="Playback speed">1×</button>
+      <div id="scrub" class="scrub" role="slider" aria-label="Timeline"><div id="scrub-marks"></div><div id="scrub-fill" class="scrub-fill"></div></div>
+      <div id="clock" class="clock mono">0:00</div>
+    </footer>
+  </aside>
+</div>
+<script src="viewer.js"></script>
+</body>
+</html>

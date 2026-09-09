@@ -1,0 +1,103 @@
+"""Game configuration: the concrete JSON the runner hands the game at COGAME_CONFIG_URI.
+
+Everything here is public in the sense that it is visible in the Coworld manifest. What players
+never see in-game is the *sampled* lake (capacity, growth rate, collapse threshold), which the engine
+draws from the ranges below using the episode seed.
+"""
+
+from __future__ import annotations
+
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+# Short names a soul file may put on its first line instead of a full OpenRouter slug.
+# Values are canonical OpenRouter slugs (vendor/model); the hosted sidecar admits any canonical slug.
+DEFAULT_MODEL_ALIASES: dict[str, str] = {
+    "opus": "anthropic/claude-opus-5",
+    "sonnet": "anthropic/claude-sonnet-5",
+    "haiku": "anthropic/claude-haiku-4.5",
+    "fable": "anthropic/claude-fable-5.1",
+    "kimi": "moonshotai/kimi-k3",
+    "sol": "openai/gpt-5.6-sol",
+    "luna": "openai/gpt-5.6-luna",
+    "terra": "openai/gpt-5.6-terra",
+    "gemini": "google/gemini-3.8-flash",
+    "grok": "x-ai/grok-4.6",
+    "deepseek": "deepseek/deepseek-v4-pro",
+    "glm": "z-ai/glm-5.3",
+    "qwen": "qwen/qwen3-max-thinking",
+    "minimax": "minimax/minimax-m3",
+}
+
+
+class PlayerName(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(min_length=1)
+
+
+class Range(BaseModel):
+    """A closed interval the engine samples uniformly from, per episode seed."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    lo: float
+    hi: float
+
+    @model_validator(mode="after")
+    def ordered(self) -> "Range":
+        if self.hi < self.lo:
+            raise ValueError("range hi must be >= lo")
+        return self
+
+
+class LakeConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    capacity: Range = Field(default=Range(lo=800, hi=1200), description="Carrying capacity K in fish.")
+    growth_rate: Range = Field(default=Range(lo=0.25, hi=0.35), description="Intrinsic growth r per turn.")
+    collapse_fraction: Range = Field(
+        default=Range(lo=0.08, hi=0.14),
+        description="Point of no return as a fraction of K. Below it the stock shrinks every turn.",
+    )
+    initial_fraction: Range = Field(default=Range(lo=0.7, hi=0.9), description="Starting stock as a fraction of K.")
+
+
+class LlmConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    think_turns: int = Field(default=2, ge=0, le=6, description="Private reasoning replies allowed before each action.")
+    timeout_seconds: float = Field(default=30.0, gt=0, description="Per model call.")
+    max_output_tokens: int = Field(default=1200, ge=128, le=8192)
+    notebook_max_chars: int = Field(default=1500, ge=0, le=8000, description="Private notes carried across turns.")
+    say_max_chars: int = Field(default=500, ge=1, le=4000, description="One council message.")
+    max_calls_per_decision: int = Field(default=4, ge=1, le=10, description="Hard cap on calls per decision incl. retries.")
+
+
+class GameConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    tokens: list[str] = Field(min_length=2, max_length=16, description="Runner-injected, one per seat.")
+    players: list[PlayerName] = Field(min_length=2, max_length=16, description="One display name per seat.")
+    seed: int = Field(default=0, ge=0, description="0 means draw a fresh random seed at startup.")
+    turns: int = Field(default=60, ge=1, le=1000)
+    commune_every: int = Field(default=5, ge=1, description="Hold a council after every N fishing turns.")
+    commune_rounds: int = Field(default=2, ge=0, le=6, description="Speaking rounds per council; 0 disables talk.")
+    commune_at_start: bool = Field(default=True, description="Hold an opening council before turn 1.")
+    boat_capacity: int = Field(default=25, ge=1, description="Fish one boat lands per turn at full effort on a full lake.")
+    history_turns: int = Field(default=10, ge=1, le=100, description="Recent turns shown in every observation.")
+    punishments_public: bool = Field(default=True, description="Whether the ledger names who punished whom.")
+    reveal_models: bool = Field(default=True, description="Put each seat's model in results and replay.")
+    episode_wall_seconds: float = Field(default=900.0, gt=0, description="LLM wall budget; past it seats go scripted.")
+    lake: LakeConfig = Field(default_factory=LakeConfig)
+    llm: LlmConfig = Field(default_factory=LlmConfig)
+    model_aliases: dict[str, str] = Field(default_factory=lambda: dict(DEFAULT_MODEL_ALIASES))
+
+    @model_validator(mode="after")
+    def roster_sizes_match(self) -> "GameConfig":
+        if len(self.tokens) != len(self.players):
+            raise ValueError("tokens and players must have the same length")
+        return self
+
+    @property
+    def num_players(self) -> int:
+        return len(self.players)

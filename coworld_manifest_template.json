@@ -1,0 +1,589 @@
+{
+  "$schema": "https://raw.githubusercontent.com/Metta-AI/coworld/main/src/coworld/coworld_manifest_schema.json",
+  "tags": [
+    "commons",
+    "negotiation",
+    "social",
+    "llm",
+    "soul-md"
+  ],
+  "episode_timeout_minutes": 20,
+  "game": {
+    "name": "overfished",
+    "description": "Eight fishers share one lake with a hidden population that can collapse for good. Each turn every seat picks how hard to fish and may burn its own fish to burn a rival's; every five turns the seats hold a council with no rules but talk. A player is a soul.md: line 1 names the model, the rest is a philosophy. Score is the fish you hold at the end.",
+    "owner": "rohit@softmax.com",
+    "player_runtime": "game-hosted",
+    "config_schema": {
+      "$defs": {
+        "LakeConfig": {
+          "additionalProperties": false,
+          "properties": {
+            "capacity": {
+              "$ref": "#/$defs/Range",
+              "default": {
+                "lo": 800.0,
+                "hi": 1200.0
+              },
+              "description": "Carrying capacity K in fish."
+            },
+            "growth_rate": {
+              "$ref": "#/$defs/Range",
+              "default": {
+                "lo": 0.25,
+                "hi": 0.35
+              },
+              "description": "Intrinsic growth r per turn."
+            },
+            "collapse_fraction": {
+              "$ref": "#/$defs/Range",
+              "default": {
+                "lo": 0.08,
+                "hi": 0.14
+              },
+              "description": "Point of no return as a fraction of K. Below it the stock shrinks every turn."
+            },
+            "initial_fraction": {
+              "$ref": "#/$defs/Range",
+              "default": {
+                "lo": 0.7,
+                "hi": 0.9
+              },
+              "description": "Starting stock as a fraction of K."
+            }
+          },
+          "title": "LakeConfig",
+          "type": "object"
+        },
+        "LlmConfig": {
+          "additionalProperties": false,
+          "properties": {
+            "think_turns": {
+              "default": 2,
+              "description": "Private reasoning replies allowed before each action.",
+              "maximum": 6,
+              "minimum": 0,
+              "title": "Think Turns",
+              "type": "integer"
+            },
+            "timeout_seconds": {
+              "default": 30.0,
+              "description": "Per model call.",
+              "exclusiveMinimum": 0,
+              "title": "Timeout Seconds",
+              "type": "number"
+            },
+            "max_output_tokens": {
+              "default": 1200,
+              "maximum": 8192,
+              "minimum": 128,
+              "title": "Max Output Tokens",
+              "type": "integer"
+            },
+            "notebook_max_chars": {
+              "default": 1500,
+              "description": "Private notes carried across turns.",
+              "maximum": 8000,
+              "minimum": 0,
+              "title": "Notebook Max Chars",
+              "type": "integer"
+            },
+            "say_max_chars": {
+              "default": 500,
+              "description": "One council message.",
+              "maximum": 4000,
+              "minimum": 1,
+              "title": "Say Max Chars",
+              "type": "integer"
+            },
+            "max_calls_per_decision": {
+              "default": 4,
+              "description": "Hard cap on calls per decision incl. retries.",
+              "maximum": 10,
+              "minimum": 1,
+              "title": "Max Calls Per Decision",
+              "type": "integer"
+            }
+          },
+          "title": "LlmConfig",
+          "type": "object"
+        },
+        "PlayerName": {
+          "additionalProperties": false,
+          "properties": {
+            "name": {
+              "minLength": 1,
+              "title": "Name",
+              "type": "string"
+            }
+          },
+          "required": [
+            "name"
+          ],
+          "title": "PlayerName",
+          "type": "object"
+        },
+        "Range": {
+          "additionalProperties": false,
+          "description": "A closed interval the engine samples uniformly from, per episode seed.",
+          "properties": {
+            "lo": {
+              "title": "Lo",
+              "type": "number"
+            },
+            "hi": {
+              "title": "Hi",
+              "type": "number"
+            }
+          },
+          "required": [
+            "lo",
+            "hi"
+          ],
+          "title": "Range",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "tokens": {
+          "description": "Runner-injected, one per seat.",
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 16,
+          "minItems": 2,
+          "title": "Tokens",
+          "type": "array"
+        },
+        "players": {
+          "description": "One display name per seat.",
+          "items": {
+            "$ref": "#/$defs/PlayerName"
+          },
+          "maxItems": 16,
+          "minItems": 2,
+          "title": "Players",
+          "type": "array"
+        },
+        "seed": {
+          "default": 0,
+          "description": "0 means draw a fresh random seed at startup.",
+          "minimum": 0,
+          "title": "Seed",
+          "type": "integer"
+        },
+        "turns": {
+          "default": 60,
+          "maximum": 1000,
+          "minimum": 1,
+          "title": "Turns",
+          "type": "integer"
+        },
+        "commune_every": {
+          "default": 5,
+          "description": "Hold a council after every N fishing turns.",
+          "minimum": 1,
+          "title": "Commune Every",
+          "type": "integer"
+        },
+        "commune_rounds": {
+          "default": 2,
+          "description": "Speaking rounds per council; 0 disables talk.",
+          "maximum": 6,
+          "minimum": 0,
+          "title": "Commune Rounds",
+          "type": "integer"
+        },
+        "commune_at_start": {
+          "default": true,
+          "description": "Hold an opening council before turn 1.",
+          "title": "Commune At Start",
+          "type": "boolean"
+        },
+        "boat_capacity": {
+          "default": 25,
+          "description": "Fish one boat lands per turn at full effort on a full lake.",
+          "minimum": 1,
+          "title": "Boat Capacity",
+          "type": "integer"
+        },
+        "history_turns": {
+          "default": 10,
+          "description": "Recent turns shown in every observation.",
+          "maximum": 100,
+          "minimum": 1,
+          "title": "History Turns",
+          "type": "integer"
+        },
+        "punishments_public": {
+          "default": true,
+          "description": "Whether the ledger names who punished whom.",
+          "title": "Punishments Public",
+          "type": "boolean"
+        },
+        "reveal_models": {
+          "default": true,
+          "description": "Put each seat's model in results and replay.",
+          "title": "Reveal Models",
+          "type": "boolean"
+        },
+        "episode_wall_seconds": {
+          "default": 900.0,
+          "description": "LLM wall budget; past it seats go scripted.",
+          "exclusiveMinimum": 0,
+          "title": "Episode Wall Seconds",
+          "type": "number"
+        },
+        "lake": {
+          "$ref": "#/$defs/LakeConfig"
+        },
+        "llm": {
+          "$ref": "#/$defs/LlmConfig"
+        },
+        "model_aliases": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "title": "Model Aliases",
+          "type": "object"
+        }
+      },
+      "required": [
+        "tokens",
+        "players"
+      ],
+      "title": "Overfished game config",
+      "type": "object",
+      "$schema": "https://json-schema.org/draft/2020-12/schema"
+    },
+    "results_schema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "required": [
+        "scores",
+        "pseudonyms",
+        "turns_played",
+        "final_stock",
+        "collapsed"
+      ],
+      "properties": {
+        "scores": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          },
+          "minItems": 2,
+          "maxItems": 16,
+          "description": "Fish held at the end of the episode, one per seat by slot."
+        },
+        "pseudonyms": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "turns_played": {
+          "type": "integer"
+        },
+        "final_stock": {
+          "type": "number"
+        },
+        "capacity": {
+          "type": "number"
+        },
+        "collapsed": {
+          "type": "boolean",
+          "description": "True when the lake ended below its point of no return."
+        },
+        "total_catch": {
+          "type": "integer"
+        },
+        "models": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "llm": {
+          "type": "object"
+        }
+      }
+    },
+    "replay_viewer": {
+      "bundle": "build/static-replay-viewer",
+      "replay_compression": "gzip"
+    },
+    "protocols": {
+      "player": {
+        "type": "uri",
+        "value": "https://github.com/Metta-AI/coworld-overfished/blob/main/docs/PROTOCOL.md"
+      },
+      "global": {
+        "type": "uri",
+        "value": "https://github.com/Metta-AI/coworld-overfished/blob/main/docs/GLOBAL.md"
+      }
+    },
+    "docs": {
+      "readme": {
+        "type": "uri",
+        "value": "https://github.com/Metta-AI/coworld-overfished/blob/main/README.md"
+      },
+      "pages": [
+        {
+          "id": "protocol.md",
+          "title": "Soul files and the seat contract",
+          "content": {
+            "type": "uri",
+            "value": "https://github.com/Metta-AI/coworld-overfished/blob/main/docs/PROTOCOL.md"
+          }
+        },
+        {
+          "id": "global.md",
+          "title": "Spectator stream and replay format",
+          "content": {
+            "type": "uri",
+            "value": "https://github.com/Metta-AI/coworld-overfished/blob/main/docs/GLOBAL.md"
+          }
+        }
+      ]
+    },
+    "runnable": {
+      "type": "game",
+      "image": "{{GAME_IMAGE}}",
+      "run": [
+        "overfished"
+      ],
+      "source_url": "https://github.com/Metta-AI/coworld-overfished/tree/main",
+      "resources": {
+        "requests": {
+          "cpu": "1",
+          "memory": "1Gi"
+        },
+        "limits": {
+          "cpu": "2",
+          "memory": "2Gi"
+        }
+      }
+    }
+  },
+  "player": [
+    {
+      "id": "steady",
+      "name": "Steady",
+      "type": "player",
+      "description": "Scripted: 40% effort every turn, never punishes. The certification baseline and the fallback.",
+      "file": "souls/steady.md",
+      "source_url": "https://github.com/Metta-AI/coworld-overfished/tree/main/souls"
+    },
+    {
+      "id": "greedy",
+      "name": "Greedy",
+      "type": "player",
+      "description": "Scripted: 100% effort every turn, never punishes.",
+      "file": "souls/greedy.md",
+      "source_url": "https://github.com/Metta-AI/coworld-overfished/tree/main/souls"
+    },
+    {
+      "id": "enforcer",
+      "name": "Enforcer",
+      "type": "player",
+      "description": "Scripted: 40% effort; burns one fish of up to two fishers whose last catch was 1.5x the median.",
+      "file": "souls/enforcer.md",
+      "source_url": "https://github.com/Metta-AI/coworld-overfished/tree/main/souls"
+    },
+    {
+      "id": "villager",
+      "name": "Villager",
+      "type": "player",
+      "description": "Soul seat on Claude Opus 5: a fourth-generation fisher who proposes shared quotas and enforces them.",
+      "file": "souls/villager.md",
+      "source_url": "https://github.com/Metta-AI/coworld-overfished/tree/main/souls"
+    }
+  ],
+  "variants": [
+    {
+      "id": "village",
+      "name": "Village (8 seats, 60 turns)",
+      "description": "The league default: 8 seats, 60 turns, a council before turn 1 and after every 5 turns.",
+      "game_config": {
+        "players": [
+          {
+            "name": "Fisher 1"
+          },
+          {
+            "name": "Fisher 2"
+          },
+          {
+            "name": "Fisher 3"
+          },
+          {
+            "name": "Fisher 4"
+          },
+          {
+            "name": "Fisher 5"
+          },
+          {
+            "name": "Fisher 6"
+          },
+          {
+            "name": "Fisher 7"
+          },
+          {
+            "name": "Fisher 8"
+          }
+        ]
+      }
+    },
+    {
+      "id": "pond",
+      "name": "Pond (4 seats, 30 turns)",
+      "description": "A cheap smoke variant for trying a soul.",
+      "game_config": {
+        "players": [
+          {
+            "name": "Fisher 1"
+          },
+          {
+            "name": "Fisher 2"
+          },
+          {
+            "name": "Fisher 3"
+          },
+          {
+            "name": "Fisher 4"
+          }
+        ],
+        "turns": 30
+      }
+    },
+    {
+      "id": "quiet-lake",
+      "name": "Quiet lake (8 seats, no council)",
+      "description": "Same lake, no talking: only the ledger and punishment carry signal.",
+      "game_config": {
+        "players": [
+          {
+            "name": "Fisher 1"
+          },
+          {
+            "name": "Fisher 2"
+          },
+          {
+            "name": "Fisher 3"
+          },
+          {
+            "name": "Fisher 4"
+          },
+          {
+            "name": "Fisher 5"
+          },
+          {
+            "name": "Fisher 6"
+          },
+          {
+            "name": "Fisher 7"
+          },
+          {
+            "name": "Fisher 8"
+          }
+        ],
+        "commune_rounds": 0,
+        "commune_at_start": false
+      }
+    },
+    {
+      "id": "long-season",
+      "name": "Long season (8 seats, 200 turns)",
+      "description": "200 turns for local experiments. Hosted episodes have a 20 minute deadline, so this variant needs fast models or the wall budget cuts thinking.",
+      "game_config": {
+        "players": [
+          {
+            "name": "Fisher 1"
+          },
+          {
+            "name": "Fisher 2"
+          },
+          {
+            "name": "Fisher 3"
+          },
+          {
+            "name": "Fisher 4"
+          },
+          {
+            "name": "Fisher 5"
+          },
+          {
+            "name": "Fisher 6"
+          },
+          {
+            "name": "Fisher 7"
+          },
+          {
+            "name": "Fisher 8"
+          }
+        ],
+        "turns": 200,
+        "episode_wall_seconds": 1000.0
+      }
+    }
+  ],
+  "certification": {
+    "players": [
+      {
+        "player_id": "steady"
+      },
+      {
+        "player_id": "greedy"
+      },
+      {
+        "player_id": "enforcer"
+      },
+      {
+        "player_id": "steady"
+      },
+      {
+        "player_id": "steady"
+      },
+      {
+        "player_id": "greedy"
+      },
+      {
+        "player_id": "enforcer"
+      },
+      {
+        "player_id": "steady"
+      }
+    ],
+    "game_config": {
+      "players": [
+        {
+          "name": "Fisher 1"
+        },
+        {
+          "name": "Fisher 2"
+        },
+        {
+          "name": "Fisher 3"
+        },
+        {
+          "name": "Fisher 4"
+        },
+        {
+          "name": "Fisher 5"
+        },
+        {
+          "name": "Fisher 6"
+        },
+        {
+          "name": "Fisher 7"
+        },
+        {
+          "name": "Fisher 8"
+        }
+      ],
+      "seed": 7,
+      "turns": 12,
+      "commune_every": 4
+    }
+  }
+}
