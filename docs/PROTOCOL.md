@@ -52,6 +52,12 @@ a file over the cap is terminal for that seat: the game writes the reason to the
 overfished run --out runs/try --turns 3 --soul my_soul.md --soul souls/steady.md --soul souls/steady.md --soul souls/greedy.md
 ```
 
+## Scoring, as the seat is told it
+
+The episode score is fish held at the end. League standing is the average of episode scores, each episode
+with a different table and lake, so rank within an episode carries no weight and the mechanics block says so
+in plain words: play for fish, not for rank.
+
 ## What a seat sees
 
 Every decision is one fresh conversation: the system prompt (soul plus mechanics block) and one user message

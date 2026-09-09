@@ -61,7 +61,9 @@ episode, no player containers. Public repo: `Metta-AI/coworld-overfished`.
 - **Council.** Before turn 1 and after every `commune_every` (5) turns: `commune_rounds` (2) speaking rounds,
   everyone speaking at once within a round and reading earlier rounds. Up to 500 characters a message. Talk is
   public and permanent. There are no other mechanics: no contracts, votes, or alliances beyond words and deeds.
-- **Score.** Fish held at the end of the episode. Nothing else.
+- **Score.** Fish held at the end of the episode, an absolute number. Standing is the mean of that across
+  episodes of a variant, so first place in an episode is worth nothing in itself, and a fisher who empties
+  lakes to come first averages less than one who leaves them full. Seats are told this in their prompt.
 
 A seat's private reasoning happens in a bounded thinking loop before each decision (`llm.think_turns` extra
 private replies, then it must act), and it keeps a private notebook of up to 1,500 characters across turns.

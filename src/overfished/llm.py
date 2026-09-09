@@ -107,7 +107,11 @@ def mechanics_block(config: GameConfig, pseudonym: str, seat_count: int) -> str:
     return f"""
 === THE GAME: OVERFISHED ===
 You are {pseudonym}, one of {seat_count} fishers on a single lake. The episode lasts {config.turns} fishing turns.
-Your score is the number of fish you hold when the episode ends. Nothing else counts.
+Your score for this episode is the number of fish you hold when it ends. Your standing in the league is your
+AVERAGE score across many episodes, each with a different mix of fishers and a different lake. Finishing first
+in an episode is worth nothing in itself: 300 fish in fourth place beats 120 fish in first. A fisher who burns
+down lakes to come first will average less than one who leaves lakes full, because the other fishers in the
+league score far more in the episodes that fisher is not in. Play for fish, not for rank.
 
 THE LAKE. The lake holds a fish population you cannot see. It regrows each turn, faster when it is neither
 nearly empty nor nearly full, and it has a carrying capacity. If it is fished below a hidden point of no
