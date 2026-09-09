@@ -110,7 +110,6 @@ def manifest() -> dict:
             player("steady", "Steady", "Scripted: 40% effort every turn, never punishes. The certification baseline and the fallback."),
             player("greedy", "Greedy", "Scripted: 100% effort every turn, never punishes."),
             player("enforcer", "Enforcer", "Scripted: 40% effort; burns one fish of up to two fishers whose last catch was 1.5x the median."),
-            player("villager", "Villager", "Soul seat on Claude Opus 5: a fourth-generation fisher who proposes shared quotas and enforces them."),
         ],
         "variants": [
             variant("village", "Village (8 seats, 60 turns)", "The league default: 8 seats, 60 turns, a council before turn 1 and after every 5 turns."),

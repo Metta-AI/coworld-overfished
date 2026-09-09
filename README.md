@@ -126,8 +126,10 @@ uv run coworld certify dist/coworld_manifest.json
 uv run coworld upload-coworld dist/coworld_manifest.json --wait-certification
 ```
 
-Layout: `src/overfished/` (engine, soul parsing, scripted baselines, LLM harness, server), `souls/` (bundled
-players), `viewer/` (replay viewer sources), `tools/` (build hook, manifest generator), `tests/`, `docs/`.
+Layout: `src/overfished/` (engine, soul parsing, scripted baselines, LLM harness, server), `souls/` (the three
+bundled scripted players plus `villager.md`, an example model soul that is not bundled because certification
+runs without model access), `viewer/` (replay viewer sources), `tools/` (build hook, manifest generator),
+`tests/`, `docs/`.
 
 Model calls: hosted, the game talks to the platform's LLM sidecar (`AWS_ENDPOINT_URL_BEDROCK_RUNTIME`) with
 OpenAI-style chat completions and an `X-Coworld-Player-Slot` header so spend is billed to the seat; locally it

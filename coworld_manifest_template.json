@@ -390,14 +390,6 @@
       "description": "Scripted: 40% effort; burns one fish of up to two fishers whose last catch was 1.5x the median.",
       "file": "souls/enforcer.md",
       "source_url": "https://github.com/Metta-AI/coworld-overfished/tree/main/souls"
-    },
-    {
-      "id": "villager",
-      "name": "Villager",
-      "type": "player",
-      "description": "Soul seat on Claude Opus 5: a fourth-generation fisher who proposes shared quotas and enforces them.",
-      "file": "souls/villager.md",
-      "source_url": "https://github.com/Metta-AI/coworld-overfished/tree/main/souls"
     }
   ],
   "variants": [
