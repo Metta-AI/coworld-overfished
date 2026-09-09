@@ -58,7 +58,7 @@
           "additionalProperties": false,
           "properties": {
             "think_turns": {
-              "default": 2,
+              "default": 1,
               "description": "Private reasoning replies allowed before each action.",
               "maximum": 6,
               "minimum": 0,
@@ -73,7 +73,7 @@
               "type": "number"
             },
             "max_output_tokens": {
-              "default": 1200,
+              "default": 2000,
               "maximum": 8192,
               "minimum": 128,
               "title": "Max Output Tokens",

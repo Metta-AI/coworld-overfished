@@ -65,9 +65,9 @@ class LakeConfig(BaseModel):
 class LlmConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    think_turns: int = Field(default=2, ge=0, le=6, description="Private reasoning replies allowed before each action.")
+    think_turns: int = Field(default=1, ge=0, le=6, description="Private reasoning replies allowed before each action.")
     timeout_seconds: float = Field(default=30.0, gt=0, description="Per model call.")
-    max_output_tokens: int = Field(default=1200, ge=128, le=8192)
+    max_output_tokens: int = Field(default=2000, ge=128, le=8192)
     notebook_max_chars: int = Field(default=1500, ge=0, le=8000, description="Private notes carried across turns.")
     say_max_chars: int = Field(default=500, ge=1, le=4000, description="One council message.")
     max_calls_per_decision: int = Field(default=4, ge=1, le=10, description="Hard cap on calls per decision incl. retries.")

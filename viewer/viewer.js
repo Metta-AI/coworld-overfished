@@ -115,20 +115,25 @@
     el("path", { d: "M0,0 C-10,-12 -8,-26 0,-30 C8,-26 10,-12 0,0 Z", fill: "#f0a9c2", stroke: "#b5567c", "stroke-width": "1" }, petal);
     el("path", { d: "M0,-4 C-4,-12 -3,-22 0,-27", fill: "none", stroke: "#fff1f5", "stroke-width": "1.2" }, petal);
 
+    // everything inside the frame is clipped to it, so leaves and lotus can enter from the edges
+    const clip = el("clipPath", { id: "frame-clip" }, defs);
+    el("rect", { x: 14, y: 14, width: W - 28, height: H - 28 }, clip);
+    const scene = el("g", { "clip-path": "url(#frame-clip)" }, svg);
+
     // water
-    el("rect", { x: 0, y: 0, width: W, height: H, fill: "#1f4270" }, svg);
-    const waves = el("g", { opacity: 0.22, stroke: "#8fb3d9", "stroke-width": 1.4, fill: "none" }, svg);
+    el("rect", { x: 0, y: 0, width: W, height: H, fill: "#1f4270" }, scene);
+    const waves = el("g", { opacity: 0.22, stroke: "#8fb3d9", "stroke-width": 1.4, fill: "none" }, scene);
     for (let y = 60; y < H - 40; y += 34) {
       for (let x = 20 + ((y / 34) % 2) * 22; x < W - 20; x += 46) {
         el("path", { d: `M${x},${y} q10,-6 20,0` }, waves);
       }
     }
 
-    layers.fish = el("g", { class: "fish-school" }, svg);
-    layers.flora = el("g", {}, svg);
-    layers.huts = el("g", {}, svg);
-    layers.boats = el("g", {}, svg);
-    layers.effects = el("g", {}, svg);
+    layers.fish = el("g", { class: "fish-school" }, scene);
+    layers.flora = el("g", {}, scene);
+    layers.huts = el("g", {}, scene);
+    layers.boats = el("g", {}, scene);
+    layers.effects = el("g", {}, scene);
     layers.frame = el("g", {}, svg);
 
     // flora: banana leaves in corners, lotus along the shore
@@ -567,7 +572,10 @@
     drawStatic();
     wireTransport();
     $("overlay").hidden = true;
-    renderAt(0);
+    const startAt = parseFloat(hashParams.get("t") || params.get("t") || "0");
+    if (Number.isFinite(startAt) && startAt > 0) time = clamp(startAt, 0, timeline.total - 0.01);
+    if ((hashParams.get("paused") || params.get("paused")) === "1") { playing = false; $("play").textContent = "Play"; }
+    renderAt(time);
     setTimeout(() => post({ type: "ready" }), 0);
     rafId = requestAnimationFrame(tick);
   }
