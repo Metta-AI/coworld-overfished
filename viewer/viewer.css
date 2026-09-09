@@ -25,9 +25,10 @@ body { background: var(--bg); color: var(--fg); font: 13px/1.45 var(--sans); ove
 .overlay { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(255, 253, 244, 0.92); color: var(--fg-subtle); font: 15px var(--serif); }
 .overlay[hidden] { display: none; }
 .overlay.error { color: var(--ink-terracotta); white-space: pre-wrap; padding: 2rem; text-align: center; }
-.caption { position: absolute; left: 6%; right: 6%; bottom: 6%; background: rgba(255, 250, 240, 0.94); border: 1px solid var(--border-strong); padding: 10px 14px; font: 14px/1.4 var(--serif); color: var(--fg); }
+.caption { box-sizing: border-box; height: 100%; overflow: hidden; background: rgba(255, 250, 240, 0.94); border: 1px solid #c99a2e; padding: 10px 16px; font: 17px/1.35 var(--serif); color: var(--fg); }
 .caption b { color: var(--ink-navy); }
-.caption[hidden] { display: none; }
+.caption-box { opacity: 0; transition: opacity 0.3s ease; }
+.caption-box.show { opacity: 1; }
 
 .panel { flex: 0 0 380px; width: 380px; display: flex; flex-direction: column; min-height: 0; border-left: 1px solid var(--border-strong); background: var(--surface); }
 .masthead { padding: 14px 18px 8px; border-bottom: 2px solid var(--border-strong); }

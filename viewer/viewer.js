@@ -77,6 +77,8 @@
   let mandala = null;
   let mandalaText = null;
   let lakeCartouche = null;
+  let captionBox = null;
+  let captionNode = null;
 
   function el(tag, attrs, parent) {
     const node = document.createElementNS(NS, tag);
@@ -197,7 +199,7 @@
       const hy = CY + Math.sin(ang) * 300;
       const color = seatColor(i, n);
       const g = el("g", { transform: `translate(${hx} ${hy})` }, layers.huts);
-      const glow = el("circle", { class: "hut-glow", cx: 0, cy: -6, r: 62, fill: "rgba(246,231,178,0.35)", stroke: "#f6e7b2", "stroke-width": 2 }, g);
+      const glow = el("circle", { class: "hut-glow", cx: 0, cy: -6, r: 62, fill: "rgba(242,201,76,0.22)", stroke: "#f2c94c", "stroke-width": 3 }, g);
       // pier planks
       el("rect", { x: -46, y: 16, width: 92, height: 12, fill: "#8a5a2b", stroke: "#4a2d12", "stroke-width": 1.5 }, g);
       for (let px = -40; px < 46; px += 12) el("line", { x1: px, y1: 16, x2: px, y2: 28, stroke: "#5b3a1e", "stroke-width": 1 }, g);
@@ -245,6 +247,12 @@
     el("circle", { cx: 0, cy: 0, r: 46, fill: "#f2c94c", stroke: "#b5567c", "stroke-width": 2 }, mandala);
     text(0, -6, "COUNCIL", { "text-anchor": "middle", fill: "#4a2d12", "font-family": "Georgia, serif", "font-size": 13, "font-weight": 700, "letter-spacing": 2 }, mandala);
     mandalaText = text(0, 12, "", { "text-anchor": "middle", fill: "#4a2d12", "font-family": "Georgia, serif", "font-size": 12 }, mandala);
+
+    // council caption inside the painting, between the mandala and the bottom piers
+    captionBox = el("foreignObject", { class: "caption-box", x: 250, y: 540, width: 700, height: 92 }, layers.effects);
+    captionNode = document.createElementNS("http://www.w3.org/1999/xhtml", "div");
+    captionNode.className = "caption";
+    captionBox.appendChild(captionNode);
 
     // lake cartouche (spectator-only truth)
     const cart = el("g", { transform: `translate(${CX} 34)` }, layers.frame);
@@ -344,13 +352,12 @@
 
   const councilBody = $("council-body");
   const councilTitle = $("council-title");
-  const caption = $("caption");
 
-  function renderCouncil(commune, visibleCount) {
+  function renderCouncil(commune, visibleCount, showCaption) {
     if (!commune) {
       councilTitle.textContent = "Council";
       councilBody.innerHTML = '<p class="empty">No council yet.</p>';
-      caption.hidden = true;
+      captionBox.classList.remove("show");
       mandala.classList.remove("show");
       huts.forEach((h) => h.glow.classList.remove("show"));
       return;
@@ -376,12 +383,12 @@
       }
     });
     councilBody.scrollTop = councilBody.scrollHeight;
-    huts.forEach((h, i) => h.glow.classList.toggle("show", !!latest && latest.slot === i));
-    if (latest) {
-      caption.hidden = false;
-      caption.innerHTML = `<b>${escapeHtml(replay.players[latest.slot].pseudonym)}</b> ${latest.text ? escapeHtml(latest.text) : "<i>says nothing.</i>"}`;
+    huts.forEach((h, i) => h.glow.classList.toggle("show", showCaption && !!latest && latest.slot === i));
+    if (showCaption && latest) {
+      captionBox.classList.add("show");
+      captionNode.innerHTML = `<b>${escapeHtml(replay.players[latest.slot].pseudonym)}</b> ${latest.text ? escapeHtml(latest.text) : "<i>says nothing.</i>"}`;
     } else {
-      caption.hidden = true;
+      captionBox.classList.remove("show");
     }
   }
 
@@ -396,10 +403,9 @@
     lastEventKey = key;
     if (fresh) {
       mandala.classList.remove("show");
-      caption.hidden = true;
       huts.forEach((h) => h.glow.classList.remove("show"));
       const lastCouncil = replay.communes.filter((c) => c.before_turn <= turn.t).pop() || null;
-      renderCouncil(lastCouncil, null);
+      renderCouncil(lastCouncil, null, false);
       $("eyebrow").innerHTML = `Turn ${turn.t} of ${replay.game.turns}${nextCouncilText(turn.t)}${live ? liveChip() : ""}`;
     }
     const out = p < 0.62;
@@ -446,7 +452,7 @@
     }
     const total = commune.rounds.reduce((a, r) => a + r.length, 0);
     const visible = p === null ? total : Math.min(total, Math.floor(p * (total + 1)));
-    renderCouncil(commune, visible);
+    renderCouncil(commune, visible, true);
   }
 
   function renderAt(time) {
