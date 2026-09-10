@@ -493,13 +493,13 @@
       el("use", { href: "#tree", x: -72, y: -142, width: 144, height: 150, transform: `translate(${x} ${y}) scale(${sc})` }, layers.flora);
       keepOut.push({ x0: x - 70 * sc, y0: y - 142 * sc, x1: x + 70 * sc, y1: y - 30 * sc }, { x0: x - 12, y0: y - 60 * sc, x1: x + 12, y1: y + 4 });
     };
-    placeTree(108, 196, 1.15); placeTree(140, 218, 0.8); placeTree(W - 108, 196, 1.15); placeTree(W - 140, 218, 0.8);
+    placeTree(108, 196, 1.15); placeTree(120, 214, 0.75); placeTree(W - 108, 196, 1.15); placeTree(W - 120, 214, 0.75);
     placeTree(100, H - FRAME - 6, 0.85); placeTree(W - 100, H - FRAME - 6, 0.85);
     // animals on the grass, decoration only: two cows on the foot band, a peacock by the left shore
-    el("use", { href: "#cow", x: -2, y: -30, width: 64, height: 32, transform: "translate(492 742) scale(1.05)" }, layers.flora);
-    el("use", { href: "#cow", x: -2, y: -30, width: 64, height: 32, transform: "translate(706 742) scale(-1.05 1.05)" }, layers.flora);
-    el("use", { href: "#peacock", x: -40, y: -66, width: 80, height: 70, transform: "translate(418 762) scale(0.8)" }, layers.flora);
-    keepOut.push({ x0: 484, y0: 706, x1: 562, y1: 748 }, { x0: 636, y0: 706, x1: 714, y1: 748 }, { x0: 384, y0: 706, x1: 452, y1: 766 });
+    el("use", { href: "#cow", x: -2, y: -30, width: 64, height: 32, transform: "translate(524 752) scale(1.05)" }, layers.flora);
+    el("use", { href: "#cow", x: -2, y: -30, width: 64, height: 32, transform: "translate(678 752) scale(-1.05 1.05)" }, layers.flora);
+    el("use", { href: "#peacock", x: -40, y: -66, width: 80, height: 70, transform: "translate(66 432) scale(0.7)" }, layers.flora);
+    keepOut.push({ x0: 518, y0: 716, x1: 594, y1: 758 }, { x0: 606, y0: 716, x1: 682, y1: 758 }, { x0: 34, y0: 382, x1: 98, y1: 438 });
 
     leafShape(FRAME + 4, H - FRAME - 16, 26, 170); leafShape(W - FRAME - 4, H - FRAME - 16, 154, 170);
 
@@ -559,34 +559,37 @@
     const g = el("g", { transform: `translate(${hx} ${hy})` }, layers.huts);
     const side = hx < CX ? -1 : 1; // the portrait stands on the side away from the lake
     const topRow = hy < CY - SEAT_RY * 0.6;
+    const bottomRow = hy > CY + SEAT_RY * 0.6;
+    const nudge = topRow ? -8 : bottomRow ? 8 : 0; // the top and bottom pavilions step off the walkway a little
+    const hg = el("g", { transform: `translate(0 ${nudge})` }, g);
     // jetty out to the water, under everything else at the station
-    const jg = el("g", { transform: `rotate(${(toward * 180) / Math.PI})` }, g);
+    const jg = el("g", { transform: `rotate(${(toward * 180) / Math.PI})` }, hg);
     el("rect", { x: 10, y: -7, width: 72, height: 14, fill: "#b5742f", stroke: INK, "stroke-width": 1.4 }, jg);
     for (let px = 16; px < 80; px += 9) el("line", { x1: px, y1: -7, x2: px, y2: 7, stroke: INK, "stroke-width": 0.8 }, jg);
     for (const px of [24, 52, 78]) el("rect", { x: px - 2, y: -10, width: 4, height: 20, fill: "#7a4a1e", stroke: INK, "stroke-width": 0.8 }, jg);
     // pavilion: pink walls, cream floral eaves, flat orange roof with chhatris, cusped door, dark windows, balustrade
     const trim = { fill: "none", stroke: color, "stroke-width": 2 };
-    el("rect", { x: -34, y: -22, width: 68, height: 38, fill: "#e6b9c6", stroke: INK, "stroke-width": 1.5 }, g);
-    el("rect", { x: -30, y: -42, width: 60, height: 10, fill: "#e6b9c6", stroke: INK, "stroke-width": 1.4 }, g);
-    el("rect", { x: -39, y: -32, width: 78, height: 10, fill: "#f6efd6", stroke: INK, "stroke-width": 1.4 }, g);
-    el("rect", { x: -39, y: -32, width: 78, height: 10, fill: "url(#eaves-floral)" }, g);
-    el("rect", { x: -36, y: -48, width: 72, height: 6, fill: "#e0662a", stroke: INK, "stroke-width": 1.4 }, g);
-    el("rect", { x: -30, y: -35, width: 60, height: 3, fill: color, stroke: INK, "stroke-width": 0.8 }, g);
+    el("rect", { x: -34, y: -22, width: 68, height: 38, fill: "#e6b9c6", stroke: INK, "stroke-width": 1.5 }, hg);
+    el("rect", { x: -30, y: -42, width: 60, height: 10, fill: "#e6b9c6", stroke: INK, "stroke-width": 1.4 }, hg);
+    el("rect", { x: -39, y: -32, width: 78, height: 10, fill: "#f6efd6", stroke: INK, "stroke-width": 1.4 }, hg);
+    el("rect", { x: -39, y: -32, width: 78, height: 10, fill: "url(#eaves-floral)" }, hg);
+    el("rect", { x: -36, y: -48, width: 72, height: 6, fill: "#e0662a", stroke: INK, "stroke-width": 1.4 }, hg);
+    el("rect", { x: -30, y: -35, width: 60, height: 3, fill: color, stroke: INK, "stroke-width": 0.8 }, hg);
     for (const cx of [-27, 27]) {
-      el("rect", { x: cx - 5, y: -55, width: 10, height: 7, fill: "#f6efd6", stroke: INK, "stroke-width": 1 }, g);
-      el("path", { d: `M${cx - 6},-55 A6,6 0 0 1 ${cx + 6},-55 Z`, fill: "#f6efd6", stroke: INK, "stroke-width": 1.1 }, g);
-      el("path", { d: `M${cx - 4},-55 L${cx - 4},-49 M${cx + 4},-55 L${cx + 4},-49`, stroke: INK, "stroke-width": 0.7 }, g);
-      el("circle", { cx, cy: -62, r: 1.6, fill: GOLD, stroke: INK, "stroke-width": 0.6 }, g);
+      el("rect", { x: cx - 5, y: -55, width: 10, height: 7, fill: "#f6efd6", stroke: INK, "stroke-width": 1 }, hg);
+      el("path", { d: `M${cx - 6},-55 A6,6 0 0 1 ${cx + 6},-55 Z`, fill: "#f6efd6", stroke: INK, "stroke-width": 1.1 }, hg);
+      el("path", { d: `M${cx - 4},-55 L${cx - 4},-49 M${cx + 4},-55 L${cx + 4},-49`, stroke: INK, "stroke-width": 0.7 }, hg);
+      el("circle", { cx, cy: -62, r: 1.6, fill: GOLD, stroke: INK, "stroke-width": 0.6 }, hg);
     }
-    el("path", { d: "M-9,16 L-9,-3 Q-9,-8 -6,-8 Q-4,-12 0,-13 Q4,-12 6,-8 Q9,-8 9,-3 L9,16 Z", fill: "#3b2413", stroke: color, "stroke-width": 2.4, "stroke-linejoin": "round" }, g);
-    el("path", { d: "M-9,16 L-9,-3 Q-9,-8 -6,-8 Q-4,-12 0,-13 Q4,-12 6,-8 Q9,-8 9,-3 L9,16 Z", fill: "none", stroke: INK, "stroke-width": 0.9, "stroke-linejoin": "round" }, g);
+    el("path", { d: "M-9,16 L-9,-3 Q-9,-8 -6,-8 Q-4,-12 0,-13 Q4,-12 6,-8 Q9,-8 9,-3 L9,16 Z", fill: "#3b2413", stroke: color, "stroke-width": 2.4, "stroke-linejoin": "round" }, hg);
+    el("path", { d: "M-9,16 L-9,-3 Q-9,-8 -6,-8 Q-4,-12 0,-13 Q4,-12 6,-8 Q9,-8 9,-3 L9,16 Z", fill: "none", stroke: INK, "stroke-width": 0.9, "stroke-linejoin": "round" }, hg);
     for (const wx of [-25, 15]) {
-      el("rect", { x: wx, y: -14, width: 10, height: 12, fill: "#3e4a5c", stroke: INK, "stroke-width": 1 }, g);
-      el("rect", { x: wx - 1.5, y: -15.5, width: 13, height: 15, ...trim }, g);
+      el("rect", { x: wx, y: -14, width: 10, height: 12, fill: "#3e4a5c", stroke: INK, "stroke-width": 1 }, hg);
+      el("rect", { x: wx - 1.5, y: -15.5, width: 13, height: 15, ...trim }, hg);
     }
     for (const [bx, bw] of [[-38, 27], [11, 27]]) {
-      el("rect", { x: bx, y: 9, width: bw, height: 7, fill: "#f6efd6", stroke: INK, "stroke-width": 1 }, g);
-      for (let px = bx + 4; px < bx + bw; px += 4) el("line", { x1: px, y1: 10, x2: px, y2: 15, stroke: INK, "stroke-width": 0.7 }, g);
+      el("rect", { x: bx, y: 9, width: bw, height: 7, fill: "#f6efd6", stroke: INK, "stroke-width": 1 }, hg);
+      for (let px = bx + 4; px < bx + bw; px += 4) el("line", { x1: px, y1: 10, x2: px, y2: 15, stroke: INK, "stroke-width": 0.7 }, hg);
     }
     // portrait: the bust in a gold-and-red painted border, twice the old size
     const nx = side * 99, ny = -6, nw = 102, nh = 121;
@@ -606,30 +609,35 @@
     nameSpan.textContent = replay.players[i].pseudonym;
     const tally = el("tspan", { "font-size": 12 }, plaque);
     tally.textContent = " · 0 fish";
-    // per-turn deltas: beside the frame on its outer side for the top and bottom rows; the side seats have no room
-    // there (11px to the border), so theirs go under the plaque as two rows
+    // per-turn deltas beside the pavilion, on its side away from the portrait. That side is the walkway and the
+    // water, so the top row's stack sits level with its (nudged) house above the walkway, the bottom row's just
+    // below the walkway, and the side seats' above or below the house, clear of the jetty.
     const dg = el("g", { transform: `translate(${hx} ${hy})` }, layers.effects);
-    const bottomRow = hy > CY + SEAT_RY * 0.6;
+    const away = -side;
     let labels;
     if (topRow || bottomRow) {
-      const lx = nx + side * 59, anchor = side < 0 ? "end" : "start";
+      const x0 = away * 46, anchor = away > 0 ? "start" : "end";
+      const tw = (hx + x0 + away * 28 - CX) / (SEAT_RX + 8);
+      const walkY = CY + Math.sqrt(Math.max(0, 1 - tw * tw)) * (SEAT_RY + 8) - hy;
+      const row1 = topRow ? nudge - 25 : walkY + 29;
       labels = {
-        catch: text(lx, ny - 12, "", { class: "catch-label", "text-anchor": anchor }, dg),
-        lost: text(lx, ny + 8, "", { class: "punish-label", "text-anchor": anchor }, dg),
-        burned: text(lx, ny + 24, "", { class: "punish-label burn", "text-anchor": anchor }, dg),
+        catch: text(x0, row1, "", { class: "catch-label", "text-anchor": anchor }, dg),
+        lost: text(x0 + away * 46, row1, "", { class: "punish-label", "text-anchor": anchor }, dg),
+        burned: text(x0, row1 + 15, "", { class: "punish-label burn", "text-anchor": anchor }, dg),
       };
+      keepOut.push({ x0: hx + Math.min(x0, x0 + away * 100), y0: hy + row1 - 20, x1: hx + Math.max(x0, x0 + away * 100), y1: hy + row1 + 18 });
     } else {
-      const ly = plaqueY + 23 + 21;
+      const cx = side * 22, row1 = hy < CY ? -81 : 38;
       labels = {
-        catch: text(nx - 6, ly, "", { class: "catch-label", "text-anchor": "end" }, dg),
-        lost: text(nx + 6, ly, "", { class: "punish-label", "text-anchor": "start" }, dg),
-        burned: text(nx, ly + 17, "", { class: "punish-label burn", "text-anchor": "middle" }, dg),
+        catch: text(cx - 4, row1, "", { class: "catch-label", "text-anchor": "end" }, dg),
+        lost: text(cx + 4, row1, "", { class: "punish-label", "text-anchor": "start" }, dg),
+        burned: text(cx, row1 + 15, "", { class: "punish-label burn", "text-anchor": "middle" }, dg),
       };
+      keepOut.push({ x0: hx + cx - 44, y0: hy + row1 - 20, x1: hx + cx + 44, y1: hy + row1 + 18 });
     }
-    huts.push({ x: hx, y: hy, ang, glow, tally, color, labels });
-    if (topRow || bottomRow) keepOut.push({ x0: hx + nx + side * 59 - (side < 0 ? 62 : 0), y0: hy + ny - 32, x1: hx + nx + side * 59 + (side < 0 ? 0 : 62), y1: hy + ny + 28 });
-    else keepOut.push({ x0: hx + nx - 40, y0: hy + plaqueY + 23, x1: hx + nx + 40, y1: hy + plaqueY + 66 });
-    keepOut.push({ x0: hx - 42, y0: hy - 66, x1: hx + 42, y1: hy + 18 }, { x0: hx + nx - nw / 2 - 4, y0: hy + ny - nh / 2 - 4, x1: hx + nx + nw / 2 + 4, y1: hy + ny + nh / 2 + 4 }, { x0: hx + gx - 64, y0: hy + plaqueY - 2, x1: hx + gx + 64, y1: hy + plaqueY + 25 });
+    const pier = { x: hx + Math.cos(toward) * 12, y: hy + nudge + Math.sin(toward) * 12 }; // the jetty's shore end
+    huts.push({ x: hx, y: hy, ang, glow, tally, color, labels, pier });
+    keepOut.push({ x0: hx - 42, y0: hy + nudge - 66, x1: hx + 42, y1: hy + nudge + 18 }, { x0: hx + nx - nw / 2 - 4, y0: hy + ny - nh / 2 - 4, x1: hx + nx + nw / 2 + 4, y1: hy + ny + nh / 2 + 4 }, { x0: hx + gx - 64, y0: hy + plaqueY - 2, x1: hx + gx + 64, y1: hy + plaqueY + 25 });
     // boat: always right side up, mirrored to face the lake; ochre hull, red gunwale, a rower whose turban carries the seat colour
     const home = { x: hx + Math.cos(toward) * 92, y: hy + Math.sin(toward) * 92 };
     const facing = home.x < CX ? 1 : -1;
@@ -837,8 +845,8 @@
     if (!show) return;
     for (const p of turn.punish) {
       const src = huts[p.frm], dst = huts[p.to];
-      // every arrow at a seat lands on the water just past its jetty end; the bow alone tells the sources apart
-      const A = towardLake(src, 70), B = towardLake(dst, 118);
+      // every arrow at a seat lands on its pier, where the jetty meets the pavilion; the bow alone tells the sources apart
+      const A = towardLake(src, 70), B = dst.pier;
       const dx = B.x - A.x, dy = B.y - A.y, len = Math.hypot(dx, dy) || 1;
       const nx = -dy / len, ny = dx / len;
       const bow = ((p.frm + p.to) % 2 ? 1 : -1) * (36 + (p.frm % 4) * 18);
