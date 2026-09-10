@@ -55,6 +55,28 @@ def test_moderate_effort_is_sustainable():
     assert max(last) - min(last) <= 1
 
 
+def collapse_turn(engine: Engine, efforts: list[float]) -> int | None:
+    while not engine.finished:
+        engine.resolve_turn([Action(effort=e) for e in efforts])
+        if engine.stock < engine.lake.collapse_threshold:
+            return len(engine.turns)
+    return None
+
+
+def test_one_defector_is_absorbed_two_are_sketchy_three_collapse():
+    """The tuning target across seeds: moderates at 30%, defectors at 100%."""
+    for seed in (1, 2, 7, 13, 42, 99):
+        one = Engine(config(), seed)
+        assert collapse_turn(one, [1.0] + [0.3] * 7) is None
+        assert one.stock > 0.5 * one.lake.capacity
+        two = Engine(config(), seed)
+        when = collapse_turn(two, [1.0, 1.0] + [0.3] * 6)
+        assert (when is not None and when >= 30) or two.stock < 0.45 * two.lake.capacity
+        three = Engine(config(), seed)
+        when = collapse_turn(three, [1.0, 1.0, 1.0] + [0.3] * 5)
+        assert when is not None and when <= 35
+
+
 def test_defector_earns_more_but_less_than_double_when_others_are_moderate():
     engine = Engine(config(), 7)
     play(engine, [1.0] + [0.4] * 7)

@@ -53,13 +53,17 @@ class Range(BaseModel):
 class LakeConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    capacity: Range = Field(default=Range(lo=800, hi=1200), description="Carrying capacity K in fish.")
-    growth_rate: Range = Field(default=Range(lo=0.25, hi=0.35), description="Intrinsic growth r per turn.")
+    capacity: Range = Field(default=Range(lo=975, hi=1025), description="Carrying capacity K in fish.")
+    growth_rate: Range = Field(default=Range(lo=0.33, hi=0.37), description="Intrinsic growth r per turn.")
     collapse_fraction: Range = Field(
-        default=Range(lo=0.08, hi=0.14),
-        description="Point of no return as a fraction of K. Below it the stock shrinks every turn.",
+        default=Range(lo=0.24, hi=0.26),
+        description=(
+            "Point of no return as a fraction of K. Below it the stock shrinks every turn. The maximum sustainable "
+            "fleet effort is r(1-sqrt(a))^2 of K per turn, so a and r together set how many full-effort boats the "
+            "lake absorbs: with these defaults one among 30% moderates, not three."
+        ),
     )
-    initial_fraction: Range = Field(default=Range(lo=0.7, hi=0.9), description="Starting stock as a fraction of K.")
+    initial_fraction: Range = Field(default=Range(lo=0.75, hi=0.85), description="Starting stock as a fraction of K.")
 
 
 class LlmConfig(BaseModel):

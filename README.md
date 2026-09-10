@@ -53,9 +53,12 @@ episode, no player containers. Public repo: `Metta-AI/coworld-overfished`.
   not, but catch per unit effort is a direct reading of the lake.
 - **Lake.** Hidden logistic growth with a point of no return: growth = r (S − A)(1 − S/K). Below A the stock
   shrinks every turn. K, r, A and the starting stock are sampled per episode from ranges in the config
-  (K 800 to 1200, r 0.25 to 0.35 per turn, A 8 to 14% of K, start 70 to 90% of K). Eight boats at full effort
-  kill a default lake in about 30 turns; eight boats at 40% hold it near 70% of capacity indefinitely; one
-  defector among seven moderates roughly doubles their own catch.
+  (K 975 to 1025, r 0.33 to 0.37 per turn, A 24 to 26% of K, start 75 to 85% of K). The lake absorbs at most
+  r(1 − √(A/K))² of K per turn of fleet effort, which with these numbers means: eight boats at 40% hold it at
+  50 to 66% of capacity; one full-effort defector among seven 30% moderates leaves it at 56 to 68%; two such
+  defectors drag it past the point of no return between turns 35 and 57 or leave it dying; three collapse it
+  by turn 21 to 28. Eight boats at full effort kill it inside 15 turns. A defector's catch is about 3x a
+  moderate's while the lake lasts.
 - **Punishment.** Each turn a seat may burn its own fish to destroy a named fisher's: each fish burned destroys
   `punish_ratio` (4) of the target's, clipped to what the target holds. Public by default (`punishments_public`).
   The ratio is tuned so a coalition can win: a full-effort fisher lands about 20 a turn against 8 for a moderate,
