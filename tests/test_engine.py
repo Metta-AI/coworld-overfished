@@ -49,7 +49,7 @@ def test_moderate_effort_is_sustainable():
     engine = Engine(config(), 7)
     play(engine, [0.4] * 8)
     assert engine.results()["collapsed"] is False
-    assert engine.stock > 0.5 * engine.lake.capacity
+    assert engine.stock > 0.35 * engine.lake.capacity
     # each turn everyone lands the same catch, give or take rounding
     last = engine.turns[-1].catch
     assert max(last) - min(last) <= 1
@@ -63,18 +63,27 @@ def collapse_turn(engine: Engine, efforts: list[float]) -> int | None:
     return None
 
 
-def test_one_defector_is_absorbed_two_are_sketchy_three_collapse():
-    """The tuning target across seeds: moderates at 30%, defectors at 100%."""
-    for seed in (1, 2, 7, 13, 42, 99):
+def test_one_defector_is_absorbed_three_collapse_two_depends_on_the_lake():
+    """The tuning target across sampled lakes: moderates at 30%, defectors at 100%."""
+    two_outcomes = set()
+    for seed in range(1, 25):
         one = Engine(config(), seed)
-        assert collapse_turn(one, [1.0] + [0.3] * 7) is None
-        assert one.stock > 0.5 * one.lake.capacity
+        assert collapse_turn(one, [1.0] + [0.3] * 7) is None, seed
+        assert one.stock > 0.45 * one.lake.capacity, seed
         two = Engine(config(), seed)
-        when = collapse_turn(two, [1.0, 1.0] + [0.3] * 6)
-        assert (when is not None and when >= 30) or two.stock < 0.45 * two.lake.capacity
+        two_outcomes.add(collapse_turn(two, [1.0, 1.0] + [0.3] * 6) is None)
         three = Engine(config(), seed)
         when = collapse_turn(three, [1.0, 1.0, 1.0] + [0.3] * 5)
-        assert when is not None and when <= 35
+        assert when is not None and when <= 45, seed
+    # two defectors is the sketchy case: some lakes take it, some die
+    assert two_outcomes == {True, False}
+
+
+def test_lakes_differ_in_size_and_boats():
+    lakes = {(Engine(config(), seed).lake.capacity, Engine(config(), seed).lake.boat_capacity) for seed in range(1, 9)}
+    assert len(lakes) == 8
+    for capacity, boat in lakes:
+        assert 600 <= capacity <= 1400 and 13 <= boat <= 37
 
 
 def test_defector_earns_more_but_less_than_double_when_others_are_moderate():

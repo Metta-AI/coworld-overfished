@@ -21,32 +21,40 @@
             "capacity": {
               "$ref": "#/$defs/Range",
               "default": {
-                "lo": 975.0,
-                "hi": 1025.0
+                "lo": 600.0,
+                "hi": 1400.0
               },
               "description": "Carrying capacity K in fish."
+            },
+            "boat_ratio": {
+              "$ref": "#/$defs/Range",
+              "default": {
+                "lo": 38.0,
+                "hi": 44.0
+              },
+              "description": "K divided by one boat's full-lake catch. Sampled with K so the fleet-to-lake ratio, which decides how many full-effort boats the lake absorbs, stays inside the tuned band while the absolute numbers vary."
             },
             "growth_rate": {
               "$ref": "#/$defs/Range",
               "default": {
-                "lo": 0.33,
-                "hi": 0.37
+                "lo": 0.32,
+                "hi": 0.38
               },
               "description": "Intrinsic growth r per turn."
             },
             "collapse_fraction": {
               "$ref": "#/$defs/Range",
               "default": {
-                "lo": 0.24,
-                "hi": 0.26
+                "lo": 0.23,
+                "hi": 0.27
               },
               "description": "Point of no return as a fraction of K. Below it the stock shrinks every turn. The maximum sustainable fleet effort is r(1-sqrt(a))^2 of K per turn, so a and r together set how many full-effort boats the lake absorbs: with these defaults one among 30% moderates, not three."
             },
             "initial_fraction": {
               "$ref": "#/$defs/Range",
               "default": {
-                "lo": 0.75,
-                "hi": 0.85
+                "lo": 0.6,
+                "hi": 0.9
               },
               "description": "Starting stock as a fraction of K."
             }
@@ -213,13 +221,6 @@
           "description": "Hold an opening council before turn 1.",
           "title": "Commune At Start",
           "type": "boolean"
-        },
-        "boat_capacity": {
-          "default": 25,
-          "description": "Fish one boat lands per turn at full effort on a full lake.",
-          "minimum": 1,
-          "title": "Boat Capacity",
-          "type": "integer"
         },
         "punish_ratio": {
           "default": 4,

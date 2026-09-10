@@ -122,7 +122,9 @@ class Episode:
                 brain = SeatBrain(
                     slot=seat.slot,
                     soul=soul,
-                    system_prompt=soul.text + "\n\n" + mechanics_block(config, engine.pseudonyms[seat.slot], config.num_players),
+                    system_prompt=soul.text
+                    + "\n\n"
+                    + mechanics_block(config, engine.pseudonyms[seat.slot], config.num_players, engine.lake.boat_capacity),
                 )
             runtime = SeatRuntime(slot=seat.slot, soul=soul, log=seat_log, scripted=scripted, brain=brain)
             runtime.note(

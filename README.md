@@ -47,18 +47,25 @@ episode, no player containers. Public repo: `Metta-AI/coworld-overfished`.
 
 - **Seats.** 8 per episode in the league variant (the engine takes 2 to 16). Each seat gets a per-episode
   pseudonym; seats never see policy names or models.
+- **What seats are told.** Only the rules below, in a fixed mechanics block appended to the soul (see
+  `mechanics_block` in `src/overfished/llm.py`): score, lake, fishing, punishment, council, privacy, reply
+  format. No strategy, no mention of coalitions, quotas, promises or threats. Whatever politics emerge come
+  from the souls.
 - **Turn.** Everyone chooses an effort in [0, 1] at once. A boat lands `boat_capacity` (25) fish at full effort
   on a full lake; the catch scales with lake fullness and is rounded to whole fish. If the fleet asks for more
   than the lake holds, the lake is emptied and split in proportion to effort. Catches are public; efforts are
   not, but catch per unit effort is a direct reading of the lake.
 - **Lake.** Hidden logistic growth with a point of no return: growth = r (S − A)(1 − S/K). Below A the stock
-  shrinks every turn. K, r, A and the starting stock are sampled per episode from ranges in the config
-  (K 975 to 1025, r 0.33 to 0.37 per turn, A 24 to 26% of K, start 75 to 85% of K). The lake absorbs at most
-  r(1 − √(A/K))² of K per turn of fleet effort, which with these numbers means: eight boats at 40% hold it at
-  50 to 66% of capacity; one full-effort defector among seven 30% moderates leaves it at 56 to 68%; two such
-  defectors drag it past the point of no return between turns 35 and 57 or leave it dying; three collapse it
-  by turn 21 to 28. Eight boats at full effort kill it inside 15 turns. A defector's catch is about 3x a
-  moderate's while the lake lasts.
+  shrinks every turn. Every episode samples a different lake from ranges in the config: capacity K 600 to 1400,
+  growth r 0.32 to 0.38 per turn, point of no return A at 23 to 27% of K, starting stock 60 to 90% of K, and
+  a boat size of K/38 to K/44 fish (so 14 to 37 fish per boat at full effort on a full lake; the boat size is
+  told to the seats, nothing else is). Fishers can read the lake's fullness from their own catch per effort,
+  but not its size, growth, or edge, and none of it repeats between episodes.
+  The lake absorbs at most r(1 − √(A/K))² of K per turn of fleet effort. Within the sampled ranges that
+  means: eight boats at 40% hold it at 40 to 73% of capacity; one full-effort defector among seven 30%
+  moderates leaves it at 50 to 74%; two such defectors kill it on most lakes and leave it dying on the rest;
+  three collapse it by turn 17 to 43; eight at full effort kill it inside 15 turns. A defector's catch is
+  about 3x a moderate's while the lake lasts.
 - **Punishment.** Each turn a seat may burn its own fish to destroy a named fisher's: each fish burned destroys
   `punish_ratio` (4) of the target's, clipped to what the target holds. Public by default (`punishments_public`).
   The ratio is tuned so a coalition can win: a full-effort fisher lands about 20 a turn against 8 for a moderate,

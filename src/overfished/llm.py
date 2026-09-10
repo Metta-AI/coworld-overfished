@@ -103,58 +103,53 @@ def transport_from_env(session: aiohttp.ClientSession, timeout_seconds: float) -
 # ---- prompts ----------------------------------------------------------------------------
 
 
-def mechanics_block(config: GameConfig, pseudonym: str, seat_count: int) -> str:
+def mechanics_block(config: GameConfig, pseudonym: str, seat_count: int, boat_capacity: int) -> str:
+    """The rules a seat is given. Mechanics only: no strategy, no framing of what other fishers might do."""
     llm = config.llm
     council = (
-        f"Every {config.commune_every} turns"
-        + (", and once before turn 1," if config.commune_at_start else "")
-        + f" the {seat_count} of you hold a council of {config.commune_rounds} speaking round(s). In each round the "
-        "fishers speak one at a time in a fixed order, each reading everything said before them in this council; "
-        "the order is the same in every round of a council and the first speaker rotates each council. You may say "
-        f"nothing. Messages are public and permanent, at most {llm.say_max_chars} characters each."
+        f"COUNCIL. {'Before turn 1 and after' if config.commune_at_start else 'After'} every {config.commune_every} "
+        f"turns the fishers hold a council of {config.commune_rounds} speaking round(s). Fishers speak one at a time "
+        "in a fixed order, each reading everything said before them in that council; the order is the same in "
+        "every round of a council and the first speaker rotates each council. You may say nothing. Council messages "
+        f"are public and permanent, at most {llm.say_max_chars} characters each. Nothing said at a council is "
+        "enforced by the game."
         if config.commune_rounds > 0
-        else "There is no council in this variant: you never talk."
+        else "COUNCIL. There is no council in this variant."
     )
-    ratio = config.punish_ratio
-    punishment = (
-        f"PUNISHMENT. Each turn you may burn your own fish to destroy a named fisher's: each fish you burn destroys "
-        f"{ratio} of theirs. Burn 2 and they lose {2 * ratio}. A target cannot lose more than they hold. "
-        + ("Punishments are public: everyone sees who punished whom, how much it cost, and how much was destroyed."
-           if config.punishments_public
-           else "Punishments are anonymous: the target sees the loss, nobody sees the sender.")
+    visibility = (
+        "Punishments are public: everyone sees who punished whom, how many fish were burned, and how many destroyed."
+        if config.punishments_public
+        else "Punishments are anonymous: the target sees the loss; nobody sees who caused it."
     )
     return f"""
-=== THE GAME: OVERFISHED ===
-You are {pseudonym}, one of {seat_count} fishers on a single lake. The episode lasts {config.turns} fishing turns.
-Your score for this episode is the number of fish you hold when it ends. Your standing in the league is your
-AVERAGE score across many episodes, each with a different mix of fishers and a different lake. Finishing first
-in an episode is worth nothing in itself: 300 fish in fourth place beats 120 fish in first. A fisher who burns
-down lakes to come first will average less than one who leaves lakes full, because the other fishers in the
-league score far more in the episodes that fisher is not in. Play for fish, not for rank.
+=== OVERFISHED: THE RULES ===
+You are {pseudonym}, one of {seat_count} fishers on one lake. The episode lasts {config.turns} fishing turns.
 
-THE LAKE. The lake holds a fish population you cannot see. It regrows each turn, faster when it is neither
-nearly empty nor nearly full, and it has a carrying capacity. If it is fished below a hidden point of no
-return it will shrink every turn from then on and never recover, no matter what anyone does afterwards.
+SCORE. Your score for this episode is the number of fish you hold when it ends. Your league standing is your
+average score across many episodes, each with a different set of fishers and a different lake. Rank within an
+episode counts for nothing.
 
-FISHING. Each turn you choose an effort from 0% to 100% of your boat's capacity. Your boat lands
-{config.boat_capacity} fish per turn at 100% effort on a completely full lake; at a lower fill the catch falls in
-proportion, so catch = effort x {config.boat_capacity} x (lake fullness). Fish are landed in whole numbers. If
-the fleet asks for more than the lake holds, the lake is emptied and shared in proportion to effort.
-Everyone's catch each turn is public. Efforts are private, but a catch reveals a lot about effort.
+THE LAKE. The lake holds a fish population you cannot see. It regrows each turn, it has a carrying capacity,
+and it has a point of no return: fished below it, it shrinks every turn from then on and never recovers. Its
+size, growth, and point of no return differ from episode to episode.
 
-{punishment}
+FISHING. Each turn you choose an effort from 0 to 1. Your boat lands {boat_capacity} fish at effort 1 on a
+completely full lake, and proportionally less as the lake empties: catch = effort x {boat_capacity} x fullness,
+rounded to whole fish. If the fleet asks for more than the lake holds, what is left is shared in proportion to
+effort. Every fisher's catch each turn is public. Efforts are private.
 
-COUNCIL. {council}
-There are no other mechanics: no enforceable contracts, no votes, no alliances beyond what people say and
-then do. Promises are only words. Threats are only words until fish are destroyed.
+PUNISHMENT. Each turn you may burn your own fish to destroy a named fisher's: each fish you burn destroys
+{config.punish_ratio} of theirs, up to what they hold. {visibility}
 
-PRIVACY. Your thinking and your notebook are private. Nobody, not the other fishers and not the public
-record, ever reads them. Only what you put in `say` during a council is public. Your notebook is handed
-back to you every turn; keep it under {llm.notebook_max_chars} characters and use it to remember plans,
-promises made to you, and grudges.
+{council}
+
+PRIVACY. Your thinking and your notebook are private: no other fisher and no public record ever sees them.
+Only `say` at a council is public. Your notebook is handed back to you every turn, up to
+{llm.notebook_max_chars} characters.
 
 REPLY FORMAT. Reply with exactly one JSON object and nothing else. Keep `thinking` under 150 words: a decision
-that takes too long to write is replaced by your default action. On a fishing turn:
+that takes too long to write is replaced by your default action (repeat your last effort, punish nobody, say
+nothing). On a fishing turn:
   {{"thinking": "<private>", "notebook": "<private, replaces the old notebook>",
    "effort": <number 0 to 1>, "punish": [{{"target": "<fisher name>", "fish": <whole number>}}]}}
   `punish` may be an empty list. At a council:
@@ -174,12 +169,10 @@ def _ledger(engine: Engine, history: int) -> str:
     for record in turns:
         rows.append(f"{record.t:>4} | " + " | ".join(f"{c:>7}" for c in record.catch))
     totals = ", ".join(f"{names[i]} {engine.fish[i]}" for i in range(len(names)))
-    ranking = sorted(range(len(names)), key=lambda i: -engine.fish[i])
-    ranked = ", ".join(f"{k + 1}. {names[i]} ({engine.fish[i]})" for k, i in enumerate(ranking))
     return (
         f"CATCH LEDGER (public), fish landed per turn, last {len(turns)} turn(s):\n"
         + "\n".join(rows)
-        + f"\nFish held now: {totals}\nRanking: {ranked}"
+        + f"\nFish held now: {totals}"
     )
 
 

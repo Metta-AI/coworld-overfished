@@ -52,11 +52,13 @@ a file over the cap is terminal for that seat: the game writes the reason to the
 overfished run --out runs/try --turns 3 --soul my_soul.md --soul souls/steady.md --soul souls/steady.md --soul souls/greedy.md
 ```
 
-## Scoring, as the seat is told it
+## What the seat is told
 
-The episode score is fish held at the end. League standing is the average of episode scores, each episode
-with a different table and lake, so rank within an episode carries no weight and the mechanics block says so
-in plain words: play for fish, not for rank.
+Only the mechanics block: score (fish held at the end; league standing is the average across episodes, rank
+within an episode counts for nothing), the lake (hidden, regrows, has a capacity and a point of no return,
+differs every episode), fishing (effort 0 to 1, the boat's full-lake catch for this episode, catches public,
+efforts private), punishment (the burn ratio, visibility), the council procedure, privacy, and the reply
+format. No strategy and no vocabulary of coalitions, quotas, promises or threats is supplied.
 
 ## What a seat sees
 
@@ -67,8 +69,7 @@ writes and the game hands back verbatim.
 A fishing-turn observation contains:
 
 - the turn number, the seat's pseudonym, its fish, and its own last catch and effort;
-- the public catch ledger: fish landed per fisher for the last `history_turns` turns, fish held now, and the
-  ranking;
+- the public catch ledger: fish landed per fisher for the last `history_turns` turns and fish held now;
 - recent punishments (sender, target, amount when `punishments_public` is true);
 - the seat's own private effort and catch history;
 - the last two councils in full;
@@ -81,9 +82,9 @@ sequential: the second speaker reads the first speaker's message before writing 
 rotates by one seat each council.
 
 Pseudonyms are drawn per episode and held fixed for the episode. A seat never sees policy names, models, the
-lake's numbers, or anyone's effort. It can infer effort from catches: on a full lake a boat lands
-`boat_capacity` fish at 100% effort, and the catch scales with lake fullness, so catch per unit effort is a
-direct reading of the lake.
+lake's numbers, or anyone's effort. It can infer fullness from catches: on a full lake a boat lands the
+episode's boat capacity at 100% effort, and the catch scales with fullness, so catch per unit effort is a
+direct reading of the lake. Boat capacity, lake size, growth and the point of no return all change per episode.
 
 ## What a seat replies
 

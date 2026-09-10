@@ -49,6 +49,7 @@ class Lake(BaseModel):
     growth_rate: float
     collapse_threshold: float
     initial_stock: float
+    boat_capacity: int = Field(description="Fish one boat lands per turn at full effort on a full lake.")
 
 
 class PunishRecord(BaseModel):
@@ -88,11 +89,13 @@ def sample_lake(config: GameConfig, seed: int) -> Lake:
     growth_rate = rng.uniform(lake.growth_rate.lo, lake.growth_rate.hi)
     collapse = capacity * rng.uniform(lake.collapse_fraction.lo, lake.collapse_fraction.hi)
     initial = capacity * rng.uniform(lake.initial_fraction.lo, lake.initial_fraction.hi)
+    boat = max(1, round(capacity / rng.uniform(lake.boat_ratio.lo, lake.boat_ratio.hi)))
     return Lake(
         capacity=float(capacity),
         growth_rate=growth_rate,
         collapse_threshold=round(collapse, 1),
         initial_stock=round(initial, 1),
+        boat_capacity=boat,
     )
 
 
@@ -167,7 +170,7 @@ class Engine:
             raise ValueError("the episode is over")
         stock_before = self.stock
         density = self.stock / self.lake.capacity
-        attempts = [a.effort * self.config.boat_capacity * density for a in actions]
+        attempts = [a.effort * self.lake.boat_capacity * density for a in actions]
         total = min(int(math.floor(sum(attempts))), int(math.floor(self.stock)))
         catch = largest_remainder(attempts, total)
         for slot, fish in enumerate(catch):
@@ -224,7 +227,7 @@ class Engine:
                 "commune_every": self.config.commune_every,
                 "commune_rounds": self.config.commune_rounds,
                 "commune_at_start": self.config.commune_at_start,
-                "boat_capacity": self.config.boat_capacity,
+                "boat_capacity": self.lake.boat_capacity,
                 "punish_ratio": self.config.punish_ratio,
                 "punishments_public": self.config.punishments_public,
             },

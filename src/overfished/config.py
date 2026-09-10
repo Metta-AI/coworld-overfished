@@ -53,17 +53,24 @@ class Range(BaseModel):
 class LakeConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    capacity: Range = Field(default=Range(lo=975, hi=1025), description="Carrying capacity K in fish.")
-    growth_rate: Range = Field(default=Range(lo=0.33, hi=0.37), description="Intrinsic growth r per turn.")
+    capacity: Range = Field(default=Range(lo=600, hi=1400), description="Carrying capacity K in fish.")
+    boat_ratio: Range = Field(
+        default=Range(lo=38, hi=44),
+        description=(
+            "K divided by one boat's full-lake catch. Sampled with K so the fleet-to-lake ratio, which decides how "
+            "many full-effort boats the lake absorbs, stays inside the tuned band while the absolute numbers vary."
+        ),
+    )
+    growth_rate: Range = Field(default=Range(lo=0.32, hi=0.38), description="Intrinsic growth r per turn.")
     collapse_fraction: Range = Field(
-        default=Range(lo=0.24, hi=0.26),
+        default=Range(lo=0.23, hi=0.27),
         description=(
             "Point of no return as a fraction of K. Below it the stock shrinks every turn. The maximum sustainable "
             "fleet effort is r(1-sqrt(a))^2 of K per turn, so a and r together set how many full-effort boats the "
             "lake absorbs: with these defaults one among 30% moderates, not three."
         ),
     )
-    initial_fraction: Range = Field(default=Range(lo=0.75, hi=0.85), description="Starting stock as a fraction of K.")
+    initial_fraction: Range = Field(default=Range(lo=0.6, hi=0.9), description="Starting stock as a fraction of K.")
 
 
 class LlmConfig(BaseModel):
@@ -98,7 +105,6 @@ class GameConfig(BaseModel):
     commune_every: int = Field(default=5, ge=1, description="Hold a council after every N fishing turns.")
     commune_rounds: int = Field(default=2, ge=0, le=6, description="Speaking rounds per council, one fisher at a time; 0 disables talk.")
     commune_at_start: bool = Field(default=True, description="Hold an opening council before turn 1.")
-    boat_capacity: int = Field(default=25, ge=1, description="Fish one boat lands per turn at full effort on a full lake.")
     punish_ratio: int = Field(default=4, ge=1, description="Fish destroyed on the target for each fish the punisher burns.")
     history_turns: int = Field(default=10, ge=1, le=100, description="Recent turns shown in every observation.")
     punishments_public: bool = Field(default=True, description="Whether the ledger names who punished whom.")
