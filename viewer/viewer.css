@@ -110,7 +110,7 @@ td .hit { color: var(--ink-terracotta); font-family: var(--mono); font-size: 11p
 .punish-head { fill: #7a1f1f; stroke: #7a1f1f; stroke-width: 1; stroke-linejoin: round; opacity: 0; transition: opacity 0.3s ease; }
 .punish-head.show { opacity: 1; }
 .punish-label { font: 700 18px var(--serif); fill: #ff7a5c; paint-order: stroke; stroke: #2b1a10; stroke-width: 4px; opacity: 0; transition: opacity 0.3s ease; }
-.punish-label.burn { fill: #d9cdb0; font-size: 13px; }
+.punish-label.burn { font-size: 13.5px; }
 .lake-fill-paint { transition: width 0.4s ease; }
 .lake-cartouche-text { font: 700 13px var(--serif); fill: #2b1a10; paint-order: stroke; stroke: #f3e7cc; stroke-width: 3px; stroke-linejoin: round; }
 .punish-label.show { opacity: 1; }

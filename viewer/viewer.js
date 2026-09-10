@@ -609,33 +609,21 @@
     nameSpan.textContent = replay.players[i].pseudonym;
     const tally = el("tspan", { "font-size": 12 }, plaque);
     tally.textContent = " · 0 fish";
-    // per-turn deltas beside the pavilion, on its side away from the portrait. That side is the walkway and the
-    // water, so the top row's stack sits level with its (nudged) house above the walkway, the bottom row's just
-    // below the walkway, and the side seats' above or below the house, clear of the jetty.
+    // per-turn deltas on the house's water-facing side, measured from the house centre (0, nudge - 23) in this
+    // group: below the house on the top row, above it on the bottom row, and as one row beside it for the side
+    // seats, vertically centred on the house. Lines are laid out at render time so hidden values leave no gaps.
     const dg = el("g", { transform: `translate(${hx} ${hy})` }, layers.effects);
-    const away = -side;
-    let labels;
-    if (topRow || bottomRow) {
-      const x0 = away * 46, anchor = away > 0 ? "start" : "end";
-      const tw = (hx + x0 + away * 28 - CX) / (SEAT_RX + 8);
-      const walkY = CY + Math.sqrt(Math.max(0, 1 - tw * tw)) * (SEAT_RY + 8) - hy;
-      const row1 = topRow ? nudge - 25 : walkY + 29;
-      labels = {
-        catch: text(x0, row1, "", { class: "catch-label", "text-anchor": anchor }, dg),
-        lost: text(x0 + away * 46, row1, "", { class: "punish-label", "text-anchor": anchor }, dg),
-        burned: text(x0, row1 + 15, "", { class: "punish-label burn", "text-anchor": anchor }, dg),
-      };
-      keepOut.push({ x0: hx + Math.min(x0, x0 + away * 100), y0: hy + row1 - 20, x1: hx + Math.max(x0, x0 + away * 100), y1: hy + row1 + 18 });
-    } else {
-      const cx = side * 22, row1 = hy < CY ? -81 : 38;
-      labels = {
-        catch: text(cx - 4, row1, "", { class: "catch-label", "text-anchor": "end" }, dg),
-        lost: text(cx + 4, row1, "", { class: "punish-label", "text-anchor": "start" }, dg),
-        burned: text(cx, row1 + 15, "", { class: "punish-label burn", "text-anchor": "middle" }, dg),
-      };
-      keepOut.push({ x0: hx + cx - 44, y0: hy + row1 - 20, x1: hx + cx + 44, y1: hy + row1 + 18 });
-    }
-    const pier = { x: hx + Math.cos(toward) * 12, y: hy + nudge + Math.sin(toward) * 12 }; // the jetty's shore end
+    const mode = topRow ? "down" : bottomRow ? "up" : side < 0 ? "row-right" : "row-left";
+    const anchor = mode === "down" || mode === "up" ? "middle" : mode === "row-right" ? "start" : "end";
+    const labels = {
+      mode,
+      x0: mode === "row-right" ? 40 : mode === "row-left" ? -40 : 0,
+      y0: mode === "down" ? nudge + 16 + 30 : mode === "up" ? nudge - 62 - 6 : nudge - 23 + 7,
+      catch: text(0, 0, "", { class: "catch-label", "text-anchor": anchor }, dg),
+      lost: text(0, 0, "", { class: "punish-label", "text-anchor": anchor }, dg),
+      burned: text(0, 0, "", { class: "punish-label burn", "text-anchor": anchor }, dg),
+    };
+    const pier = { x: hx + Math.cos(toward) * 10, y: hy + nudge + Math.sin(toward) * 10 }; // the house end of the jetty
     huts.push({ x: hx, y: hy, ang, glow, tally, color, labels, pier });
     keepOut.push({ x0: hx - 42, y0: hy + nudge - 66, x1: hx + 42, y1: hy + nudge + 18 }, { x0: hx + nx - nw / 2 - 4, y0: hy + ny - nh / 2 - 4, x1: hx + nx + nw / 2 + 4, y1: hy + ny + nh / 2 + 4 }, { x0: hx + gx - 64, y0: hy + plaqueY - 2, x1: hx + gx + 64, y1: hy + plaqueY + 25 });
     // boat: always right side up, mirrored to face the lake; ochre hull, red gunwale, a rower whose turban carries the seat colour
@@ -742,9 +730,9 @@
     }
 
     huts = []; boats = [];
+    punishLayer = el("g", {}, layers.effects); // before the stations, so their delta labels draw above the arrows
     seatSpecs.forEach((spec, i) => drawStation(i, spec));
     drawTufts(rng);
-    punishLayer = el("g", {}, layers.effects);
 
     // council mandala: a lotus in the middle of the lake
     mandala = el("g", { class: "council-mandala", transform: `translate(${CX} ${CY - 30})` }, layers.effects);
@@ -819,15 +807,32 @@
 
   function renderDeltas(turn, show) {
     huts.forEach((h, i) => {
+      const L = h.labels;
       const lost = turn ? turn.punish.filter((p) => p.to === i).reduce((a, p) => a + p.fish, 0) : 0;
       const burned = turn ? turn.punish.filter((p) => p.frm === i).reduce((a, p) => a + p.cost, 0) : 0;
       const caught = turn ? turn.catch[i] : 0;
-      h.labels.catch.textContent = `+${caught}`;
-      h.labels.lost.textContent = `−${lost}`;
-      h.labels.burned.textContent = `burned ${burned}`;
-      h.labels.catch.classList.toggle("show", show && caught > 0);
-      h.labels.lost.classList.toggle("show", show && lost > 0);
-      h.labels.burned.classList.toggle("show", show && burned > 0);
+      L.catch.textContent = `+${caught}`;
+      L.lost.textContent = `−${lost}`;
+      L.burned.textContent = `burned ${burned}`;
+      L.catch.classList.toggle("show", show && caught > 0);
+      L.lost.classList.toggle("show", show && lost > 0);
+      L.burned.classList.toggle("show", show && burned > 0);
+      const lines = [[L.catch, 20], [L.lost, 18], [L.burned, 14]].filter(([node]) => node.classList.contains("show"));
+      if (L.mode === "down" || L.mode === "up") {
+        let y = L.y0;
+        for (const [node, height] of L.mode === "down" ? lines : lines.reverse()) {
+          node.setAttribute("x", L.x0);
+          node.setAttribute("y", y);
+          y += L.mode === "down" ? height + 2 : -(height + 2);
+        }
+      } else {
+        let x = L.x0;
+        for (const [node] of L.mode === "row-right" ? lines : lines.reverse()) {
+          node.setAttribute("x", x);
+          node.setAttribute("y", L.y0);
+          x += (node.getComputedTextLength() + 10) * (L.mode === "row-right" ? 1 : -1);
+        }
+      }
     });
   }
 
