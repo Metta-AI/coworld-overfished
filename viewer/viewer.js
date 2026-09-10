@@ -19,8 +19,9 @@
   const SPEEDS = [0.5, 1, 2, 4];
   const W = 1200, H = 800, CX = 600, CY = 400;
   const FRAME = 32; // outer red band + gold + ink + patterned band + ink
-  const LAKE_RX = 430, LAKE_RY = 250; // the water ellipse
-  const SEAT_RX = 470, SEAT_RY = 275; // the bank ring the warehouses stand on
+  const LAKE_RX = 400, LAKE_RY = 250; // the water ellipse
+  const SEAT_RX = 440, SEAT_RY = 262; // the bank ring the pavilions stand on
+  const SKY_BOTTOM = 100;
 
   // ---------------------------------------------------------------- data + timeline
 
@@ -74,10 +75,16 @@
   const CREAM = "#f3e7cc";
   const GOLD = "#dfb44a";
   const RED = "#c8452b";
-  const GROUND = "#8fb1ab"; // flat teal bank, as in the elephant folio
-  const WATER = "#274f8c";
-  const WATER_SCALE = "#2f5f9e";
-  const CREST = "#dfe9f3";
+  const GRASS = "#86a94b"; // flat grass ground, as in the Pahari folios
+  const HILL = "#b9cb5c";
+  const SKY = "#b7d3df";
+  const TREE = "#3d6b38";
+  const TREE_LIGHT = "#6f9a4c";
+  const PATH = "#c39a55";
+  const WATER = "#1f3f78"; // deep indigo so ivory fish stand off it
+  const WATER_SCALE = "#24488a";
+  const CREST = "rgba(214,226,240,0.42)";
+  const IVORY = "#f7eed6";
 
   // ---------------------------------------------------------------- avatars: miniature-painting busts
 
@@ -224,6 +231,7 @@
   let mandala = null;
   let mandalaText = null;
   let lakeCartouche = null;
+  let lakeCartoucheBox = null;
   let leaf = null; // the palm-leaf speech folio: { group, textNode, portrait, caption }
 
   function el(tag, attrs, parent) {
@@ -277,21 +285,28 @@
     el("path", { d: "M21,-7 C22,-11.5 27,-12 28,-9 C28.4,-7.4 26.4,-7.2 26.6,-8.6", finInk }, fish);
     el("path", { d: "M21,7 C22,11.5 27,12 28,9 C28.4,7.4 26.4,7.2 26.6,8.6", finInk }, fish);
     // tail: forked, tips curling inward
-    el("path", { d: "M33,0 C37,-5 41,-10 47,-11 C45,-7.5 42,-4 39.5,-1 C40,0 40,0 39.5,1 C42,4 45,7.5 47,11 C41,10 37,5 33,0 Z", fill: CREAM, stroke: INK, "stroke-width": 1, "stroke-linejoin": "round" }, fish);
+    el("path", { d: "M33,0 C37,-5 41,-10 47,-11 C45,-7.5 42,-4 39.5,-1 C40,0 40,0 39.5,1 C42,4 45,7.5 47,11 C41,10 37,5 33,0 Z", fill: IVORY, stroke: INK, "stroke-width": 1.2, "stroke-linejoin": "round" }, fish);
     el("path", { d: "M35,-1 L43,-8 M36,0 L40,-3 M35,1 L43,8 M36,0 L40,3", fill: "none", stroke: INK, "stroke-width": 0.55 }, fish);
     el("path", { d: "M46.4,-10.6 c1.6,-0.4 2.6,1 1.4,2.2 M46.4,10.6 c1.6,0.4 2.6,-1 1.4,-2.2", finInk }, fish);
-    el("path", { d: body, fill: CREAM, stroke: INK, "stroke-width": 1.1 }, fish);
+    el("path", { d: body, fill: IVORY, stroke: INK, "stroke-width": 1.5 }, fish);
     const inner = el("g", { "clip-path": "url(#fish-body)" }, fish);
-    el("rect", { x: 0, y: -10, width: 9.5, height: 20, fill: "url(#fish-vhatch)", opacity: 0.75 }, inner);
-    el("rect", { x: 11.5, y: -10, width: 8, height: 20, fill: "url(#fish-scales)" }, inner);
-    el("rect", { x: 19.5, y: -10, width: 6, height: 20, fill: "url(#fish-hatch)", opacity: 0.8 }, inner);
-    el("rect", { x: 25.5, y: -10, width: 8, height: 20, fill: "url(#fish-scales)" }, inner);
+    el("rect", { x: 0, y: -10, width: 9.5, height: 20, fill: "url(#fish-vhatch)", opacity: 0.55 }, inner);
+    el("rect", { x: 11.5, y: -10, width: 8, height: 20, fill: "url(#fish-scales)", opacity: 0.85 }, inner);
+    el("rect", { x: 19.5, y: -10, width: 6, height: 20, fill: "url(#fish-hatch)", opacity: 0.55 }, inner);
+    el("rect", { x: 25.5, y: -10, width: 8, height: 20, fill: "url(#fish-scales)", opacity: 0.85 }, inner);
     el("path", { d: "M9.5,-10 L9.5,10 M11.5,-10 L11.5,10 M19.5,-10 L19.5,10 M25.5,-10 L25.5,10 M33,-10 L33,10", fill: "none", stroke: INK, "stroke-width": 0.7 }, inner);
     el("path", { d: "M9.5,-8 q1,1.4 0,2.8 q1,1.4 0,2.8 q1,1.4 0,2.8 q1,1.4 0,2.8 q1,1.4 0,2.8 q1,1.4 0,2.8", fill: "none", stroke: INK, "stroke-width": 0.55 }, inner);
-    el("circle", { cx: 5.6, cy: -1.6, r: 2.6, fill: CREAM, stroke: INK, "stroke-width": 0.8 }, fish);
+    el("circle", { cx: 5.6, cy: -1.6, r: 2.6, fill: IVORY, stroke: INK, "stroke-width": 0.8 }, fish);
     el("circle", { cx: 5.6, cy: -1.6, r: 1.5, fill: "none", stroke: INK, "stroke-width": 0.5 }, fish);
     el("circle", { cx: 5.6, cy: -1.6, r: 0.8, fill: INK }, fish);
     el("path", { d: "M1.5,1.5 C3,2.5 4.5,2.8 6,2.6", finInk }, fish);
+
+    // floral band under the pavilion eaves, and the scalloped foliage of the tree clumps
+    const floral = el("pattern", { id: "eaves-floral", width: 9, height: 8, patternUnits: "userSpaceOnUse" }, defs);
+    el("path", { d: "M4.5,7 L4.5,3.5 M4.5,5 l-2,-1.5 M4.5,5 l2,-1.5", fill: "none", stroke: "#4f7d3a", "stroke-width": 0.7 }, floral);
+    el("circle", { cx: 4.5, cy: 2.4, r: 1.1, fill: RED }, floral);
+    const foliage = el("pattern", { id: "tree-scallops", width: 12, height: 8, patternUnits: "userSpaceOnUse" }, defs);
+    el("path", { d: "M0,8 a6,6 0 0 1 12,0 M-6,4 a6,6 0 0 1 12,0 M6,4 a6,6 0 0 1 12,0", fill: "none", stroke: TREE_LIGHT, "stroke-width": 0.9 }, foliage);
 
     // lotus petal, re-outlined
     const petal = el("symbol", { id: "petal", viewBox: "-10 -30 20 34" }, defs);
@@ -330,12 +345,22 @@
     el("ellipse", { cx: CX, cy: CY, rx: LAKE_RX, ry: LAKE_RY }, lakeClip);
   }
 
-  function drawWater(scene) {
-    el("rect", { x: 0, y: 0, width: W, height: H, fill: GROUND }, scene);
-    // sand lip, then the water and its scalloped Pattachitra waves, then the ink shoreline
-    el("ellipse", { cx: CX, cy: CY, rx: LAKE_RX + 9, ry: LAKE_RY + 9, fill: "#dcc48b", stroke: INK, "stroke-width": 2 }, scene);
+  function drawLand(scene) {
+    el("rect", { x: 0, y: 0, width: W, height: H, fill: GRASS }, scene);
+    // a pale sky band along the top, rounded lime hills rising into it
+    el("rect", { x: 0, y: 0, width: W, height: SKY_BOTTOM, fill: SKY }, scene);
+    const hill = (cx, rx, ry) => {
+      el("path", { d: `M${cx - rx},${SKY_BOTTOM + 2} A${rx},${ry} 0 0 1 ${cx + rx},${SKY_BOTTOM + 2} Z`, fill: HILL, stroke: INK, "stroke-width": 1.6 }, scene);
+      el("path", { d: `M${cx - rx * 0.7},${SKY_BOTTOM - ry * 0.55} Q${cx},${SKY_BOTTOM - ry * 1.15} ${cx + rx * 0.7},${SKY_BOTTOM - ry * 0.55}`, fill: "none", stroke: "#8fa53a", "stroke-width": 1, opacity: 0.8 }, scene);
+    };
+    hill(250, 230, 62); hill(950, 230, 62);
+    el("path", { d: `M0,${SKY_BOTTOM + 2} H${W}`, stroke: INK, "stroke-width": 1.4 }, scene);
+    // ochre walkway joining the pavilions, then the brown shore path
+    el("ellipse", { cx: CX, cy: CY, rx: SEAT_RX + 8, ry: SEAT_RY + 8, fill: "none", stroke: INK, "stroke-width": 24 }, scene);
+    el("ellipse", { cx: CX, cy: CY, rx: SEAT_RX + 8, ry: SEAT_RY + 8, fill: "none", stroke: PATH, "stroke-width": 21 }, scene);
+    el("ellipse", { cx: CX, cy: CY, rx: LAKE_RX + 10, ry: LAKE_RY + 10, fill: "#a67a3c", stroke: INK, "stroke-width": 2 }, scene);
     el("ellipse", { cx: CX, cy: CY, rx: LAKE_RX, ry: LAKE_RY, fill: WATER }, scene);
-    const waves = el("g", { "clip-path": "url(#lake-clip)", stroke: CREST, "stroke-width": 1.3, "stroke-linejoin": "round" }, scene);
+    const waves = el("g", { "clip-path": "url(#lake-clip)", stroke: CREST, "stroke-width": 1.2, "stroke-linejoin": "round" }, scene);
     const r = 20, rowStep = 12;
     let row = 0;
     for (let y = CY - LAKE_RY + 4; y < CY + LAKE_RY + r; y += rowStep, row++) {
@@ -352,7 +377,7 @@
     const tufts = el("g", { fill: "none", stroke: INK, "stroke-width": 1.1, "stroke-linecap": "round", opacity: 0.75 }, layers.flora);
     for (let i = 0; i < 44; i++) {
       const x = FRAME + 20 + rng() * (W - 2 * FRAME - 40);
-      const y = rng() < 0.5 ? FRAME + 30 + rng() * 90 : H - FRAME - 30 - rng() * 90;
+      const y = rng() < 0.5 ? SKY_BOTTOM + 8 + rng() * 60 : H - FRAME - 30 - rng() * 90;
       const dx = x - CX, dy = y - CY;
       if ((dx * dx) / ((SEAT_RX + 50) ** 2) + (dy * dy) / ((SEAT_RY + 50) ** 2) < 1) continue;
       el("path", { d: `M${x},${y} c-2,-5 -5,-8 -7,-9 M${x},${y} c0,-6 1,-10 1,-12 M${x},${y} c2,-5 5,-8 8,-9`, transform: `rotate(${(rng() - 0.5) * 20} ${x} ${y})` }, tufts);
@@ -368,10 +393,28 @@
       }
       el("path", { d: `M${len * 0.15},-${len * 0.02} C${len * 0.4},-${len * 0.14} ${len * 0.7},-${len * 0.16} ${len * 0.9},-${len * 0.08}`, stroke: "#8fd08a", "stroke-width": 1.2, fill: "none", opacity: 0.7 }, g);
     };
-    leafShape(FRAME + 4, FRAME + 16, -22, 210); leafShape(FRAME + 4, FRAME + 16, 18, 150); leafShape(FRAME + 4, FRAME + 16, 2, 250);
-    leafShape(W - FRAME - 4, FRAME + 16, 202, 210); leafShape(W - FRAME - 4, FRAME + 16, 162, 150); leafShape(W - FRAME - 4, FRAME + 16, 178, 250);
-    leafShape(FRAME + 4, H - FRAME - 16, 22, 200); leafShape(FRAME + 4, H - FRAME - 16, -28, 150);
-    leafShape(W - FRAME - 4, H - FRAME - 16, 158, 200); leafShape(W - FRAME - 4, H - FRAME - 16, 208, 150);
+    // tree clumps: overlapping crowns of scalloped foliage on a short trunk
+    const tree = (x, y, size, seed) => {
+      const tr = mulberry32(seed);
+      const g = el("g", { transform: `translate(${x} ${y})` }, layers.flora);
+      el("path", { d: `M-4,0 L-3,-${size * 0.5} L3,-${size * 0.5} L4,0 Z`, fill: "#6b4423", stroke: INK, "stroke-width": 1.2 }, g);
+      const crowns = [[0, -size * 0.75, size * 0.42]];
+      for (let i = 0; i < 6; i++) {
+        const a = (i / 6) * Math.PI * 2 + tr() * 0.6;
+        crowns.push([Math.cos(a) * size * 0.34, -size * 0.75 + Math.sin(a) * size * 0.26, size * (0.22 + tr() * 0.14)]);
+      }
+      const id = `tree-${seed}`;
+      const clip = el("clipPath", { id }, svg.querySelector("defs"));
+      for (const [cx, cy, r] of crowns) el("circle", { cx: x + cx, cy: y + cy, r }, clip);
+      for (const [cx, cy, r] of crowns) el("circle", { cx, cy, r, fill: TREE, stroke: INK, "stroke-width": 2.6 }, g);
+      for (const [cx, cy, r] of crowns) el("circle", { cx, cy, r, fill: TREE }, g);
+      const fol = el("g", { "clip-path": `url(#${id})`, transform: `translate(${-x} ${-y})` }, g);
+      el("rect", { x: x - size, y: y - size * 1.3, width: size * 2, height: size * 1.4, fill: "url(#tree-scallops)" }, fol);
+    };
+    tree(120, SKY_BOTTOM + 72, 120, 1); tree(212, SKY_BOTTOM + 96, 88, 2);
+    tree(W - 120, SKY_BOTTOM + 72, 120, 3); tree(W - 212, SKY_BOTTOM + 96, 88, 4);
+    tree(112, H - FRAME - 16, 118, 5); tree(W - 112, H - FRAME - 16, 118, 6);
+    leafShape(FRAME + 4, H - FRAME - 16, 26, 170); leafShape(W - FRAME - 4, H - FRAME - 16, 154, 170);
 
     // lotus pads on the water margin between the seats
     const lotus = (x, y, s, bloom) => {
@@ -408,50 +451,68 @@
     const color = spec.color;
     const toward = Math.atan2(CY - hy, CX - hx);
     const g = el("g", { transform: `translate(${hx} ${hy})` }, layers.huts);
-    const side = hx < CX ? -1 : 1; // the portrait niche stands on the side away from the lake's middle
+    const side = hx < CX ? -1 : 1; // the portrait stands on the side away from the lake
+    const topRow = hy < CY - SEAT_RY * 0.6;
     // jetty out to the water, under everything else at the station
     const jg = el("g", { transform: `rotate(${(toward * 180) / Math.PI})` }, g);
     el("rect", { x: 10, y: -7, width: 72, height: 14, fill: "#b5742f", stroke: INK, "stroke-width": 1.4 }, jg);
     for (let px = 16; px < 80; px += 9) el("line", { x1: px, y1: -7, x2: px, y2: 7, stroke: INK, "stroke-width": 0.8 }, jg);
     for (const px of [24, 52, 78]) el("rect", { x: px - 2, y: -10, width: 4, height: 20, fill: "#7a4a1e", stroke: INK, "stroke-width": 0.8 }, jg);
-    // speaker halo around the portrait niche
-    const glow = el("rect", { class: "hut-glow", x: side * 70 - 32, y: -44, width: 64, height: 76, rx: 4, fill: "rgba(242,201,76,0.28)", stroke: GOLD, "stroke-width": 4 }, g);
-    // warehouse: cream walls, terracotta tile roof, cusped door, the seat colour as trim
-    el("rect", { x: -30, y: -20, width: 60, height: 36, fill: CREAM, stroke: INK, "stroke-width": 1.6 }, g);
-    el("rect", { x: -30, y: 9, width: 60, height: 7, fill: color, stroke: INK, "stroke-width": 1 }, g);
-    el("path", { d: "M-40,-20 L0,-48 L40,-20 Z", fill: "#c4553a", stroke: INK, "stroke-width": 1.6, "stroke-linejoin": "round" }, g);
-    el("path", { d: "M-30,-27 L30,-27 M-20,-34 L20,-34 M-10,-41 L10,-41", fill: "none", stroke: INK, "stroke-width": 0.8, opacity: 0.7 }, g);
-    el("path", { d: "M-40,-20 L40,-20", stroke: INK, "stroke-width": 1.6 }, g);
-    el("rect", { x: -1.5, y: -58, width: 3, height: 10, fill: GOLD, stroke: INK, "stroke-width": 0.7 }, g);
-    el("circle", { cx: 0, cy: -59, r: 3.5, fill: GOLD, stroke: INK, "stroke-width": 0.8 }, g);
-    el("path", { d: "M-8,9 L-8,-2 Q-8,-8 -4,-8 Q-2,-11 0,-13 Q2,-11 4,-8 Q8,-8 8,-2 L8,9 Z", fill: "#3b2413", stroke: INK, "stroke-width": 1 }, g);
-    el("rect", { x: -26, y: -14, width: 12, height: 10, fill: color, stroke: INK, "stroke-width": 1 }, g);
-    el("rect", { x: 14, y: -14, width: 12, height: 10, fill: color, stroke: INK, "stroke-width": 1 }, g);
-    el("path", { d: "M-20,-14 L-20,-4 M20,-14 L20,-4", stroke: INK, "stroke-width": 0.7 }, g);
-    // portrait niche
-    el("rect", { x: side * 70 - 27, y: -39, width: 54, height: 66, fill: GOLD, stroke: INK, "stroke-width": 1.4 }, g);
-    el("use", { href: `#av-${i}`, x: side * 70 - 23, y: -35, width: 46, height: 58 }, g);
-    el("rect", { x: side * 70 - 23, y: -35, width: 46, height: 58, fill: "none", stroke: INK, "stroke-width": 1 }, g);
-    // plaque: name and the fish tally, above for the top row and below for the bottom
-    const below = hy < CY ? -1 : 1;
-    const plaqueY = below < 0 ? -92 : 34;
-    el("rect", { x: -54, y: plaqueY, width: 108, height: 32, rx: 3, fill: "#7a1f1f", stroke: GOLD, "stroke-width": 1.6 }, g);
-    el("rect", { x: -51, y: plaqueY + 3, width: 102, height: 26, rx: 2, fill: "none", stroke: INK, "stroke-width": 0.8 }, g);
-    text(0, plaqueY + 14, replay.players[i].pseudonym, { "text-anchor": "middle", fill: "#f6e7b2", "font-family": "Georgia, serif", "font-size": 13.5, "font-weight": 700 }, g);
-    const tally = text(0, plaqueY + 27, "0 fish", { "text-anchor": "middle", fill: "#f6e7b2", "font-family": "Georgia, serif", "font-size": 11.5 }, g);
+    // pavilion: pink walls, cream floral eaves, flat orange roof with chhatris, cusped door, dark windows, balustrade
+    const trim = { fill: "none", stroke: color, "stroke-width": 2 };
+    el("rect", { x: -34, y: -22, width: 68, height: 38, fill: "#e6b9c6", stroke: INK, "stroke-width": 1.5 }, g);
+    el("rect", { x: -30, y: -42, width: 60, height: 10, fill: "#e6b9c6", stroke: INK, "stroke-width": 1.4 }, g);
+    el("rect", { x: -39, y: -32, width: 78, height: 10, fill: "#f6efd6", stroke: INK, "stroke-width": 1.4 }, g);
+    el("rect", { x: -39, y: -32, width: 78, height: 10, fill: "url(#eaves-floral)" }, g);
+    el("rect", { x: -36, y: -48, width: 72, height: 6, fill: "#e0662a", stroke: INK, "stroke-width": 1.4 }, g);
+    el("rect", { x: -30, y: -35, width: 60, height: 3, fill: color, stroke: INK, "stroke-width": 0.8 }, g);
+    for (const cx of [-27, 27]) {
+      el("rect", { x: cx - 5, y: -55, width: 10, height: 7, fill: "#f6efd6", stroke: INK, "stroke-width": 1 }, g);
+      el("path", { d: `M${cx - 6},-55 A6,6 0 0 1 ${cx + 6},-55 Z`, fill: "#f6efd6", stroke: INK, "stroke-width": 1.1 }, g);
+      el("path", { d: `M${cx - 4},-55 L${cx - 4},-49 M${cx + 4},-55 L${cx + 4},-49`, stroke: INK, "stroke-width": 0.7 }, g);
+      el("circle", { cx, cy: -62, r: 1.6, fill: GOLD, stroke: INK, "stroke-width": 0.6 }, g);
+    }
+    el("path", { d: "M-9,16 L-9,-3 Q-9,-8 -6,-8 Q-4,-12 0,-13 Q4,-12 6,-8 Q9,-8 9,-3 L9,16 Z", fill: "#3b2413", stroke: color, "stroke-width": 2.4, "stroke-linejoin": "round" }, g);
+    el("path", { d: "M-9,16 L-9,-3 Q-9,-8 -6,-8 Q-4,-12 0,-13 Q4,-12 6,-8 Q9,-8 9,-3 L9,16 Z", fill: "none", stroke: INK, "stroke-width": 0.9, "stroke-linejoin": "round" }, g);
+    for (const wx of [-25, 15]) {
+      el("rect", { x: wx, y: -14, width: 10, height: 12, fill: "#3e4a5c", stroke: INK, "stroke-width": 1 }, g);
+      el("rect", { x: wx - 1.5, y: -15.5, width: 13, height: 15, ...trim }, g);
+    }
+    for (const [bx, bw] of [[-38, 27], [11, 27]]) {
+      el("rect", { x: bx, y: 9, width: bw, height: 7, fill: "#f6efd6", stroke: INK, "stroke-width": 1 }, g);
+      for (let px = bx + 4; px < bx + bw; px += 4) el("line", { x1: px, y1: 10, x2: px, y2: 15, stroke: INK, "stroke-width": 0.7 }, g);
+    }
+    // portrait: the bust in a gold-and-red painted border, twice the old size
+    const nx = side * 99, ny = -6, nw = 102, nh = 121;
+    const glow = el("rect", { class: "hut-glow", x: nx - nw / 2 - 6, y: ny - nh / 2 - 6, width: nw + 12, height: nh + 12, rx: 5, fill: "rgba(242,201,76,0.3)", stroke: GOLD, "stroke-width": 5 }, g);
+    el("rect", { x: nx - nw / 2, y: ny - nh / 2, width: nw, height: nh, fill: GOLD, stroke: INK, "stroke-width": 1.6 }, g);
+    el("rect", { x: nx - nw / 2 + 4, y: ny - nh / 2 + 4, width: nw - 8, height: nh - 8, fill: "#8f2a1e", stroke: INK, "stroke-width": 0.8 }, g);
+    el("rect", { x: nx - nw / 2 + 6, y: ny - nh / 2 + 6, width: nw - 12, height: nh - 12, fill: "none", stroke: GOLD, "stroke-width": 1 }, g);
+    el("use", { href: `#av-${i}`, x: nx - 43, y: ny - 51.5, width: 86, height: 103 }, g);
+    el("rect", { x: nx - 43, y: ny - 51.5, width: 86, height: 103, fill: "none", stroke: INK, "stroke-width": 1.2 }, g);
+    // plaque: name and tally on one line, beyond the portrait, centred on the pavilion-and-portrait group
+    const gx = side * 55;
+    const plaqueY = topRow ? ny - nh / 2 - 27 : ny + nh / 2 + 5;
+    el("rect", { x: gx - 62, y: plaqueY, width: 124, height: 23, rx: 3, fill: "#7a1f1f", stroke: GOLD, "stroke-width": 1.6 }, g);
+    el("rect", { x: gx - 59, y: plaqueY + 3, width: 118, height: 17, rx: 2, fill: "none", stroke: INK, "stroke-width": 0.8 }, g);
+    const plaque = text(gx, plaqueY + 16, "", { "text-anchor": "middle", fill: "#f6e7b2", "font-family": "Georgia, serif", "font-size": 13 }, g);
+    const nameSpan = el("tspan", { "font-weight": 700 }, plaque);
+    nameSpan.textContent = replay.players[i].pseudonym;
+    const tally = el("tspan", { "font-size": 12 }, plaque);
+    tally.textContent = " · 0 fish";
     huts.push({ x: hx, y: hy, ang, glow, tally, color });
-    // boat: ochre hull, red gunwale, a rower whose turban carries the seat colour
-    const deg = (toward * 180) / Math.PI;
+    // boat: always right side up, mirrored to face the lake; ochre hull, red gunwale, a rower whose turban carries the seat colour
     const home = { x: hx + Math.cos(toward) * 92, y: hy + Math.sin(toward) * 92 };
+    const facing = home.x < CX ? 1 : -1;
     const bg = el("g", { class: "boat", transform: `translate(${home.x} ${home.y})` }, layers.boats);
-    const inner = el("g", { transform: `rotate(${deg})` }, bg);
+    const inner = el("g", { transform: `scale(${facing} 1)` }, bg);
     el("path", { d: "M-26,0 Q0,17 26,0 Q0,6 -26,0 Z", fill: "#b5742f", stroke: INK, "stroke-width": 1.5, "stroke-linejoin": "round" }, inner);
     el("path", { d: "M-22,1 Q0,6 22,1", fill: "none", stroke: RED, "stroke-width": 2 }, inner);
-    el("path", { d: "M-26,0 q-6,-8 -3,-16", fill: "none", stroke: INK, "stroke-width": 2.2, "stroke-linecap": "round" }, inner);
-    el("path", { d: "M-2,-3 L0,-10 L8,-10 L10,-3 Z", fill: CREAM, stroke: INK, "stroke-width": 1 }, inner);
-    el("circle", { cx: 4, cy: -13, r: 4, fill: "#d9a06b", stroke: INK, "stroke-width": 1 }, inner);
-    el("path", { d: "M-0.5,-14 A4.5,4.5 0 0 1 8.5,-14 Z", fill: color, stroke: INK, "stroke-width": 1 }, inner);
-    el("line", { x1: 10, y1: -6, x2: 24, y2: -18, stroke: INK, "stroke-width": 1.6, "stroke-linecap": "round" }, inner);
+    el("path", { d: "M26,0 q6,-8 3,-16", fill: "none", stroke: INK, "stroke-width": 2.2, "stroke-linecap": "round" }, inner);
+    el("path", { d: "M-8,-3 L-6,-10 L2,-10 L4,-3 Z", fill: CREAM, stroke: INK, "stroke-width": 1 }, inner);
+    el("circle", { cx: -2, cy: -13, r: 4, fill: "#d9a06b", stroke: INK, "stroke-width": 1 }, inner);
+    el("path", { d: "M-6.5,-14 A4.5,4.5 0 0 1 2.5,-14 Z", fill: color, stroke: INK, "stroke-width": 1 }, inner);
+    el("line", { x1: 4, y1: -6, x2: 18, y2: -18, stroke: INK, "stroke-width": 1.6, "stroke-linecap": "round" }, inner);
     boats.push({ node: bg, home, ang: toward, out: null });
     const label = text(home.x, home.y - 30, "", { class: "catch-label", "text-anchor": "middle" }, layers.effects);
     catchLabels.push(label);
@@ -459,7 +520,7 @@
 
   function drawLeaf() {
     // a palm-leaf folio: long tan leaf, frayed ends, a string hole, the speaker painted at the right end
-    const x0 = 232, y0 = 516, w = 736, h = 110;
+    const x0 = 232, y0 = 482, w = 736, h = 108;
     const g = el("g", { class: "leaf-scroll" }, layers.effects);
     const rng = mulberry32(11);
     const pts = [];
@@ -520,7 +581,7 @@
     while (svg.firstChild) svg.removeChild(svg.firstChild);
     drawDefs();
     const scene = el("g", { "clip-path": "url(#frame-clip)" }, svg);
-    drawWater(scene);
+    drawLand(scene);
     layers.fish = el("g", { class: "fish-school" }, scene);
     layers.flora = el("g", {}, scene);
     layers.huts = el("g", {}, scene);
@@ -539,7 +600,7 @@
       const x = CX + Math.cos(a) * r * 330;
       const y = CY + Math.sin(a) * r * 190;
       const dir = rng() < 0.5 ? -1 : 1;
-      const size = 34 + rng() * 18;
+      const size = 40 + rng() * 20;
       const node = el("use", { href: "#fish", x: -size / 2, y: -size * 0.23, width: size, height: size * 0.46, transform: `translate(${x} ${y}) scale(${dir} 1) rotate(${(rng() - 0.5) * 30})` }, layers.fish);
       fishGlyphs.push(node);
     }
@@ -549,7 +610,7 @@
     punishLayer = el("g", {}, layers.effects);
 
     // council mandala: a lotus in the middle of the lake
-    mandala = el("g", { class: "council-mandala", transform: `translate(${CX} ${CY})` }, layers.effects);
+    mandala = el("g", { class: "council-mandala", transform: `translate(${CX} ${CY - 30})` }, layers.effects);
     el("circle", { cx: 0, cy: 0, r: 108, fill: "rgba(39,79,140,0.78)", stroke: INK, "stroke-width": 2 }, mandala);
     el("circle", { cx: 0, cy: 0, r: 104, fill: "none", stroke: GOLD, "stroke-width": 2 }, mandala);
     el("circle", { cx: 0, cy: 0, r: 94, fill: "none", stroke: CREAM, "stroke-width": 1, "stroke-dasharray": "3 5" }, mandala);
@@ -567,10 +628,10 @@
     drawLeaf();
 
     // lake cartouche (spectator-only truth), on the bank above the lake
-    const cart = el("g", { transform: `translate(${CX} ${FRAME + 16})` }, layers.frame);
-    el("rect", { x: -128, y: -13, width: 256, height: 26, rx: 3, fill: CREAM, stroke: INK, "stroke-width": 1.4 }, cart);
-    el("rect", { x: -125, y: -10, width: 250, height: 20, rx: 2, fill: "none", stroke: GOLD, "stroke-width": 1 }, cart);
-    lakeCartouche = text(0, 4.5, "", { "text-anchor": "middle", fill: INK, "font-family": "Georgia, serif", "font-size": 13.5 }, cart);
+    const cart = el("g", { transform: `translate(${CX} ${FRAME + 17})` }, layers.frame);
+    lakeCartoucheBox = el("rect", { x: -172, y: -14, width: 344, height: 28, rx: 3, fill: "#4f7d3a", stroke: INK, "stroke-width": 1.4 }, cart);
+    el("rect", { x: -169, y: -11, width: 338, height: 22, rx: 2, fill: "none", stroke: "rgba(246,231,178,0.7)", "stroke-width": 1 }, cart);
+    lakeCartouche = text(0, 4.5, "", { "text-anchor": "middle", fill: "#f6e7b2", "font-family": "Georgia, serif", "font-size": 13, "font-weight": 700 }, cart);
 
     drawFrame();
   }
@@ -598,18 +659,22 @@
       g.style.filter = dying ? "grayscale(1) brightness(0.7)" : "";
     });
     const pct = Math.round(share * 100);
-    lakeCartouche.textContent = dying
-      ? `Lake ${Math.round(stock)} fish · ${pct}% · past no return`
-      : `Lake ${Math.round(stock)} fish · ${pct}% of ${Math.round(replay.lake.capacity)}`;
-    $("lake-text").textContent = `${Math.round(stock)} fish, ${pct}% of capacity ${Math.round(replay.lake.capacity)}. Point of no return at ${Math.round(replay.lake.collapse_threshold)}.`;
+    const state = dying ? "past" : share > 0.55 ? "healthy" : "strained";
+    const label = { healthy: "healthy", strained: "strained", past: "past the point of no return" }[state];
+    lakeCartouche.textContent = `Lake ${pct}% full — ${label}`;
+    lakeCartoucheBox.setAttribute("fill", { healthy: "#4f7d3a", strained: "#c98a1f", past: "#b5432c" }[state]);
+    const lakeText = $("lake-text");
+    lakeText.textContent = `Lake ${pct}% full — ${label}`;
+    lakeText.className = `lake-text state-${state}`;
+    $("lake-detail").textContent = `${Math.round(stock).toLocaleString("en-US")} of ${Math.round(replay.lake.capacity).toLocaleString("en-US")} fish · point of no return at ${Math.round(replay.lake.collapse_threshold).toLocaleString("en-US")}`;
     const fill = $("lake-fill");
     fill.style.width = `${pct}%`;
-    fill.classList.toggle("dying", dying);
+    fill.className = `lake-fill state-${state}`;
     $("lake-threshold").style.left = `${(replay.lake.collapse_threshold / replay.lake.capacity) * 100}%`;
   }
 
   function renderTally(fish) {
-    huts.forEach((h, i) => { h.tally.textContent = `${fish[i]} fish`; });
+    huts.forEach((h, i) => { h.tally.textContent = ` · ${fish[i]} fish`; });
   }
 
   function clearPunish() {
