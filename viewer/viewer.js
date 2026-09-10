@@ -232,7 +232,8 @@
   let mandala = null;
   let mandalaText = null;
   let lakeCartouche = null;
-  let lakeCartoucheBox = null;
+  let lakeFill = null;
+  let keepOut = []; // rectangles the ground tufts stay out of: {x0, y0, x1, y1}
   let leaf = null; // the palm-leaf speech folio: { group, textNode, portrait, caption }
 
   function el(tag, attrs, parent) {
@@ -489,23 +490,18 @@
       el("path", { d: `M${len * 0.15},-${len * 0.02} C${len * 0.4},-${len * 0.14} ${len * 0.7},-${len * 0.16} ${len * 0.9},-${len * 0.08}`, stroke: "#8fd08a", "stroke-width": 1.2, fill: "none", opacity: 0.7 }, g);
     };
     // trees, one symbol at varying scale; the top pair stands on the hills, the bottom pair on the bank
-    const placeTree = (x, y, sc) => el("use", { href: "#tree", x: -72, y: -142, width: 144, height: 150, transform: `translate(${x} ${y}) scale(${sc})` }, layers.flora);
+    const placeTree = (x, y, sc) => {
+      el("use", { href: "#tree", x: -72, y: -142, width: 144, height: 150, transform: `translate(${x} ${y}) scale(${sc})` }, layers.flora);
+      keepOut.push({ x0: x - 70 * sc, y0: y - 142 * sc, x1: x + 70 * sc, y1: y - 30 * sc }, { x0: x - 12, y0: y - 60 * sc, x1: x + 12, y1: y + 4 });
+    };
     placeTree(108, 196, 1.15); placeTree(206, 218, 0.8); placeTree(W - 108, 196, 1.15); placeTree(W - 206, 218, 0.8);
     placeTree(110, H - FRAME - 6, 1.05); placeTree(W - 110, H - FRAME - 6, 1.05);
-    // grass and lotus-bud tufts: a band along the foot of the painting, a row under the sky, and by the four shore points
-    const placeTuft = (x, y, sc, budded) => el("use", { href: budded ? "#tuft-bud" : "#tuft", x: -8, y: -15, width: 16, height: 16, transform: `translate(${x} ${y}) scale(${sc})` }, layers.flora);
-    for (let x = 200; x <= W - 200; x += 34) placeTuft(x + (rng() - 0.5) * 8, H - FRAME - 6, 1 + rng() * 0.4, x % 3 === 0);
-    for (let x = 470; x <= 730; x += 30) placeTuft(x, SKY_BOTTOM + 15, 0.9, x % 2 === 0);
-    for (const [ax, ay] of [[0, 1], [0, -1]]) {
-      for (const off of [-13, 0, 13]) {
-        const a = Math.atan2(ay, ax) + (off * Math.PI) / 180;
-        placeTuft(CX + Math.cos(a) * (SEAT_RX + 36), CY + Math.sin(a) * (SEAT_RY + 34), 1, off === 0);
-      }
-    }
     // animals on the grass, decoration only: two cows on the foot band, a peacock by the left shore
     el("use", { href: "#cow", x: -2, y: -30, width: 64, height: 32, transform: "translate(492 742) scale(1.05)" }, layers.flora);
     el("use", { href: "#cow", x: -2, y: -30, width: 64, height: 32, transform: "translate(706 742) scale(-1.05 1.05)" }, layers.flora);
     el("use", { href: "#peacock", x: -40, y: -66, width: 80, height: 70, transform: "translate(94 434) scale(0.8)" }, layers.flora);
+    keepOut.push({ x0: 484, y0: 706, x1: 562, y1: 748 }, { x0: 636, y0: 706, x1: 714, y1: 748 }, { x0: 56, y0: 376, x1: 132, y1: 442 });
+
     leafShape(FRAME + 4, H - FRAME - 16, 26, 170); leafShape(W - FRAME - 4, H - FRAME - 16, 154, 170);
 
     // lotus pads on the water margin between the seats
@@ -532,6 +528,25 @@
       lotus(CX + Math.cos(a) * (LAKE_RX - 34), CY + Math.sin(a) * (LAKE_RY - 30), 0.75 + (i % 3) * 0.15, i % 2 === 0);
       const a2 = a + Math.PI / n / 2.2;
       lotus(CX + Math.cos(a2) * (LAKE_RX - 18), CY + Math.sin(a2) * (LAKE_RY - 14), 0.55, false);
+    }
+  }
+
+  function drawTufts(rng) {
+    // grass and lotus-bud tufts on an even grid with a little jitter, over every grass area, clear of everything drawn on it
+    const step = 38;
+    const blocked = (x, y) => {
+      if (y < SKY_BOTTOM + 12 || y > H - FRAME - 4 || x < FRAME + 10 || x > W - FRAME - 10) return true;
+      const dx = (x - CX) / (SEAT_RX + 24), dy = (y - CY) / (SEAT_RY + 24);
+      if (dx * dx + dy * dy < 1) return true;
+      return keepOut.some((r) => x > r.x0 - 6 && x < r.x1 + 6 && y > r.y0 - 4 && y < r.y1 + 8);
+    };
+    let k = 0;
+    for (let gy = SKY_BOTTOM + 24; gy < H - FRAME; gy += step) {
+      for (let gx = FRAME + 20 + ((gy / step) % 2) * (step / 2); gx < W - FRAME; gx += step, k++) {
+        const x = gx + (rng() - 0.5) * 12, y = gy + (rng() - 0.5) * 10;
+        if (blocked(x, y)) continue;
+        el("use", { href: k % 3 === 0 ? "#tuft-bud" : "#tuft", x: -8, y: -15, width: 16, height: 16, transform: `translate(${x.toFixed(1)} ${y.toFixed(1)})` }, layers.flora);
+      }
     }
   }
 
@@ -593,6 +608,7 @@
     const tally = el("tspan", { "font-size": 12 }, plaque);
     tally.textContent = " · 0 fish";
     huts.push({ x: hx, y: hy, ang, glow, tally, color });
+    keepOut.push({ x0: hx - 42, y0: hy - 66, x1: hx + 42, y1: hy + 18 }, { x0: hx + nx - nw / 2 - 4, y0: hy + ny - nh / 2 - 4, x1: hx + nx + nw / 2 + 4, y1: hy + ny + nh / 2 + 4 }, { x0: hx + gx - 64, y0: hy + plaqueY - 2, x1: hx + gx + 64, y1: hy + plaqueY + 25 });
     // boat: always right side up, mirrored to face the lake; ochre hull, red gunwale, a rower whose turban carries the seat colour
     const home = { x: hx + Math.cos(toward) * 92, y: hy + Math.sin(toward) * 92 };
     const facing = home.x < CX ? 1 : -1;
@@ -682,6 +698,7 @@
     layers.frame = el("g", {}, svg);
 
     const rng = mulberry32(replay.seed || 1);
+    keepOut = [];
     drawFlora(rng);
 
     // the school: count visible follows the true stock
@@ -699,6 +716,7 @@
 
     huts = []; boats = []; catchLabels = [];
     seatSpecs.forEach((spec, i) => drawStation(i, spec));
+    drawTufts(rng);
     punishLayer = el("g", {}, layers.effects);
 
     // council mandala: a lotus in the middle of the lake
@@ -720,10 +738,14 @@
     drawLeaf();
 
     // lake cartouche (spectator-only truth), on the bank above the lake
+    // lake health bar (spectator-only truth): cream track, state-coloured fill to the fullness, a tick at the point of no return
     const cart = el("g", { transform: `translate(${CX} ${FRAME + 17})` }, layers.frame);
-    lakeCartoucheBox = el("rect", { x: -172, y: -14, width: 344, height: 28, rx: 3, fill: "#4f7d3a", stroke: INK, "stroke-width": 1.4 }, cart);
-    el("rect", { x: -169, y: -11, width: 338, height: 22, rx: 2, fill: "none", stroke: "rgba(246,231,178,0.7)", "stroke-width": 1 }, cart);
-    lakeCartouche = text(0, 4.5, "", { "text-anchor": "middle", fill: "#f6e7b2", "font-family": "Georgia, serif", "font-size": 13, "font-weight": 700 }, cart);
+    el("rect", { x: -172, y: -14, width: 344, height: 28, rx: 3, fill: CREAM, stroke: INK, "stroke-width": 1.4 }, cart);
+    lakeFill = el("rect", { class: "lake-fill-paint", x: -170, y: -12, width: 0, height: 24, rx: 2, fill: "#4f7d3a" }, cart);
+    const tickX = -170 + (replay.lake.collapse_threshold / replay.lake.capacity) * 340;
+    el("path", { d: `M${tickX},-14 L${tickX},-9 M${tickX},9 L${tickX},14`, stroke: INK, "stroke-width": 2 }, cart);
+    el("path", { d: `M${tickX},-9 L${tickX},9`, stroke: INK, "stroke-width": 1, "stroke-dasharray": "2 2" }, cart);
+    lakeCartouche = text(0, 4.5, "", { class: "lake-cartouche-text", "text-anchor": "middle" }, cart);
 
     drawFrame();
   }
@@ -754,7 +776,8 @@
     const state = dying ? "past" : share > 0.55 ? "healthy" : "strained";
     const label = { healthy: "healthy", strained: "strained", past: "past the point of no return" }[state];
     lakeCartouche.textContent = `Lake ${pct}% full — ${label}`;
-    lakeCartoucheBox.setAttribute("fill", { healthy: "#4f7d3a", strained: "#c98a1f", past: "#b5432c" }[state]);
+    lakeFill.style.width = `${share * 340}px`;
+    lakeFill.setAttribute("fill", { healthy: "#4f7d3a", strained: "#c98a1f", past: "#b5432c" }[state]);
     const lakeText = $("lake-text");
     lakeText.textContent = `Lake ${pct}% full — ${label}`;
     lakeText.className = `lake-text state-${state}`;
@@ -804,7 +827,7 @@
       const lp = at(Math.max(0.35, tEnd - (0.14 + nth * 0.1))), ld = tan(tEnd);
       text(lp.x - ld.y * 18 * Math.sign(bow), lp.y + ld.x * 18 * Math.sign(bow) + 6, `−${p.fish}`, { class: "punish-label show", "text-anchor": "middle" }, punishLayer);
       const sx = A.x + nx * 16 * Math.sign(bow), sy = A.y + ny * 16 * Math.sign(bow);
-      text(sx, sy + 5, `burned ${p.cost}`, { class: "punish-label show", "text-anchor": "middle", "font-size": 13 }, punishLayer);
+      text(sx, sy + 5, `burned ${p.cost}`, { class: "punish-label burn show", "text-anchor": "middle", "font-size": 13 }, punishLayer);
     }
   }
 
