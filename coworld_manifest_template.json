@@ -8,6 +8,7 @@
     "soul-md"
   ],
   "episode_timeout_minutes": 45,
+  "players_per_user": 1,
   "game": {
     "name": "overfished",
     "description": "Eight fishers share one lake with a hidden population that can collapse for good. Each turn every seat picks how hard to fish and may burn its own fish to burn a rival's; every five turns the seats hold a council with no rules but talk. A player is a soul.md: line 1 names the model, the rest is a philosophy. Score is the fish you hold at the end.",

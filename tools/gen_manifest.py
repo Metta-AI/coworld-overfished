@@ -79,6 +79,7 @@ def manifest() -> dict:
         "$schema": "https://raw.githubusercontent.com/Metta-AI/coworld/main/src/coworld/coworld_manifest_schema.json",
         "tags": ["commons", "negotiation", "social", "llm", "soul-md"],
         "episode_timeout_minutes": 45,
+        "players_per_user": 1,
         "game": {
             "name": "overfished",
             "description": (
