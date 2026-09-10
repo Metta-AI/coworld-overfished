@@ -826,12 +826,16 @@
           y += L.mode === "down" ? height + 2 : -(height + 2);
         }
       } else {
+        // side houses: "+N -N" on one line level with the house centre, "burned N" on its own line under it, same edge
+        const row = lines.filter(([node]) => node !== L.burned);
         let x = L.x0;
-        for (const [node] of L.mode === "row-right" ? lines : lines.reverse()) {
+        for (const [node] of L.mode === "row-right" ? row : row.reverse()) {
           node.setAttribute("x", x);
           node.setAttribute("y", L.y0);
           x += (node.getComputedTextLength() + 10) * (L.mode === "row-right" ? 1 : -1);
         }
+        L.burned.setAttribute("x", L.x0);
+        L.burned.setAttribute("y", L.y0 + 16);
       }
     });
   }
