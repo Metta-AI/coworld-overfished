@@ -224,8 +224,7 @@
   let mandala = null;
   let mandalaText = null;
   let lakeCartouche = null;
-  let captionBox = null;
-  let captionNode = null;
+  let leaf = null; // the palm-leaf speech folio: { group, textNode, portrait, caption }
 
   function el(tag, attrs, parent) {
     const node = document.createElementNS(NS, tag);
@@ -310,6 +309,16 @@
     el("circle", { cx: 14.6, cy: 14.6, r: 0.9, fill: RED }, tile);
     el("circle", { cx: 14.6, cy: 3.4, r: 0.9, fill: "#3f7f5c" }, tile);
     el("circle", { cx: 3.4, cy: 14.6, r: 0.9, fill: "#3f7f5c" }, tile);
+
+    // palm-leaf folio: fibre grain and worn, darkened edges
+    const grain = el("pattern", { id: "leaf-grain", width: 120, height: 7, patternUnits: "userSpaceOnUse" }, defs);
+    el("rect", { x: 0, y: 0, width: 120, height: 7, fill: "#d3b57a" }, grain);
+    el("path", { d: "M0,1.5 L120,1.5 M0,4 L52,4 M70,4 L120,4 M0,6 L120,6", fill: "none", stroke: "#b8985a", "stroke-width": 0.6, opacity: 0.8 }, grain);
+    el("path", { d: "M18,3 l14,0 M84,2 l20,0", fill: "none", stroke: "#e2ca93", "stroke-width": 0.9 }, grain);
+    const edgeX = el("linearGradient", { id: "leaf-edge-x", x1: 0, x2: 1, y1: 0, y2: 0 }, defs);
+    for (const [o, a] of [[0, 0.62], [0.06, 0.18], [0.14, 0], [0.86, 0], [0.94, 0.18], [1, 0.62]]) el("stop", { offset: o, "stop-color": "#4a2e12", "stop-opacity": a }, edgeX);
+    const edgeY = el("linearGradient", { id: "leaf-edge-y", x1: 0, x2: 0, y1: 0, y2: 1 }, defs);
+    for (const [o, a] of [[0, 0.5], [0.12, 0.08], [0.3, 0], [0.7, 0], [0.88, 0.08], [1, 0.5]]) el("stop", { offset: o, "stop-color": "#4a2e12", "stop-opacity": a }, edgeY);
 
     // busts, one symbol per seat
     seatSpecs = replay.players.map((p, i) => AVATARS[p.pseudonym] || AVATAR_LIST[i % AVATAR_LIST.length]);
@@ -448,6 +457,52 @@
     catchLabels.push(label);
   }
 
+  function drawLeaf() {
+    // a palm-leaf folio: long tan leaf, frayed ends, a string hole, the speaker painted at the right end
+    const x0 = 232, y0 = 516, w = 736, h = 110;
+    const g = el("g", { class: "leaf-scroll" }, layers.effects);
+    const rng = mulberry32(11);
+    const pts = [];
+    for (let x = x0; x <= x0 + w; x += 32) pts.push([x, y0 + (rng() - 0.5) * 3]);
+    pts.push([x0 + w + 6, y0 + 30], [x0 + w + 2, y0 + 62], [x0 + w + 5, y0 + 90]);
+    for (let x = x0 + w; x >= x0; x -= 32) pts.push([x, y0 + h + (rng() - 0.5) * 3]);
+    pts.push([x0 - 6, y0 + 84], [x0 - 2, y0 + 50], [x0 - 5, y0 + 22]);
+    const d = "M" + pts.map((p) => p.map((v) => v.toFixed(1)).join(",")).join(" L") + " Z";
+    const clip = el("clipPath", { id: "leaf-clip" }, svg.querySelector("defs"));
+    el("path", { d }, clip);
+    el("path", { d, fill: "#5a3a1a", transform: "translate(3 4)", opacity: 0.35 }, g);
+    el("path", { d, fill: "url(#leaf-grain)", stroke: INK, "stroke-width": 1.4, "stroke-linejoin": "round" }, g);
+    const worn = el("g", { "clip-path": "url(#leaf-clip)" }, g);
+    el("rect", { x: x0 - 8, y: y0 - 4, width: w + 16, height: h + 8, fill: "url(#leaf-edge-x)" }, worn);
+    el("rect", { x: x0 - 8, y: y0 - 4, width: w + 16, height: h + 8, fill: "url(#leaf-edge-y)" }, worn);
+    for (let i = 0; i < 14; i++) {
+      const bx = x0 + rng() * w, by = y0 + 6 + rng() * (h - 12);
+      el("ellipse", { cx: bx, cy: by, rx: 9 + rng() * 22, ry: 2 + rng() * 3, fill: "#8a5f2a", opacity: 0.08 + rng() * 0.08 }, worn);
+    }
+    // frayed nicks at the ends
+    el("path", { d: `M${x0 - 5},${y0 + 22} l9,4 l-7,6 l8,5 l-6,7 M${x0 + w + 6},${y0 + 30} l-8,5 l7,7 l-8,4 l6,8`, fill: "none", stroke: "#6a4620", "stroke-width": 1, opacity: 0.6 }, g);
+    // string hole
+    el("circle", { cx: x0 + 92, cy: y0 + h / 2, r: 11, fill: "#5a3a1a", opacity: 0.28 }, g);
+    el("circle", { cx: x0 + 92, cy: y0 + h / 2, r: 6, fill: "#3a2510", stroke: "#8a6432", "stroke-width": 1.5 }, g);
+    // painted panel at the right end: deep blue field, red surround, the speaker's bust
+    const px = x0 + w - 118, pw = 106;
+    el("rect", { x: px, y: y0 + 6, width: pw, height: h - 12, fill: "#8f2a1e", stroke: INK, "stroke-width": 1.2 }, g);
+    el("rect", { x: px + 5, y: y0 + 11, width: pw - 10, height: h - 22, fill: "#274f8c", stroke: GOLD, "stroke-width": 1.5 }, g);
+    const portrait = el("use", { href: "#av-0", x: px + 24, y: y0 + 13, width: 58, height: 68 }, g);
+    el("rect", { x: px + 24, y: y0 + 13, width: 58, height: 68, fill: "none", stroke: GOLD, "stroke-width": 1.2 }, g);
+    for (const [cx, cy] of [[px + 14, y0 + 20], [px + 14, y0 + h - 20], [px + pw - 14, y0 + 20], [px + pw - 14, y0 + h - 20]]) {
+      el("circle", { cx, cy, r: 2.2, fill: GOLD }, g);
+    }
+    el("rect", { x: px + 9, y: y0 + 83, width: pw - 18, height: 15, rx: 2, fill: CREAM, stroke: INK, "stroke-width": 0.9 }, g);
+    const caption = text(px + pw / 2, y0 + 94, "", { "text-anchor": "middle", fill: INK, "font-family": "Georgia, serif", "font-size": 10.5, "font-weight": 700 }, g);
+    // the words, in a serif that reads as hand-set
+    const fo = el("foreignObject", { x: x0 + 112, y: y0 + 7, width: px - x0 - 122, height: h - 14 }, g);
+    const textNode = document.createElementNS("http://www.w3.org/1999/xhtml", "div");
+    textNode.className = "leaf-text";
+    fo.appendChild(textNode);
+    leaf = { group: g, textNode, portrait, caption };
+  }
+
   function drawFrame() {
     // Pattachitra border: red-ochre outer band, gold and ink rules, a patterned cream band, an ink rule
     el("rect", { x: 0, y: 0, width: W, height: 8, fill: "#b5432c" }, layers.frame);
@@ -509,11 +564,7 @@
     text(0, -5, "COUNCIL", { "text-anchor": "middle", fill: INK, "font-family": "Georgia, serif", "font-size": 12, "font-weight": 700, "letter-spacing": 2 }, mandala);
     mandalaText = text(0, 12, "", { "text-anchor": "middle", fill: INK, "font-family": "Georgia, serif", "font-size": 11.5 }, mandala);
 
-    // council caption inside the painting, between the mandala and the bottom piers
-    captionBox = el("foreignObject", { class: "caption-box", x: 250, y: 520, width: 700, height: 100 }, layers.effects);
-    captionNode = document.createElementNS("http://www.w3.org/1999/xhtml", "div");
-    captionNode.className = "caption";
-    captionBox.appendChild(captionNode);
+    drawLeaf();
 
     // lake cartouche (spectator-only truth), on the bank above the lake
     const cart = el("g", { transform: `translate(${CX} ${FRAME + 16})` }, layers.frame);
@@ -619,11 +670,29 @@
   const councilBody = $("council-body");
   const councilTitle = $("council-title");
 
+  function showLeaf(speech) {
+    const name = replay.players[speech.slot].pseudonym;
+    leaf.portrait.setAttribute("href", `#av-${speech.slot}`);
+    leaf.caption.textContent = speech.auto ? `${name} · auto` : name;
+    const node = leaf.textNode;
+    node.classList.toggle("silent", !speech.text);
+    node.textContent = speech.text || "says nothing.";
+    // long speeches set smaller; then shrink until the words fit the leaf
+    const n = (speech.text || "").length;
+    let size = n <= 110 ? 18 : n <= 220 ? 15.5 : n <= 340 ? 14 : 12.5;
+    node.style.fontSize = `${size}px`;
+    while (size > 9.5 && node.scrollHeight > node.clientHeight + 1) {
+      size -= 0.5;
+      node.style.fontSize = `${size}px`;
+    }
+    leaf.group.classList.add("show");
+  }
+
   function renderCouncil(commune, visibleCount, showCaption) {
     if (!commune) {
       councilTitle.textContent = "Council";
       councilBody.innerHTML = '<p class="empty">No council yet.</p>';
-      captionBox.classList.remove("show");
+      leaf.group.classList.remove("show");
       mandala.classList.remove("show");
       huts.forEach((h) => h.glow.classList.remove("show"));
       return;
@@ -650,12 +719,8 @@
     });
     councilBody.scrollTop = councilBody.scrollHeight;
     huts.forEach((h, i) => h.glow.classList.toggle("show", showCaption && !!latest && latest.slot === i));
-    if (showCaption && latest) {
-      captionBox.classList.add("show");
-      captionNode.innerHTML = `<b>${escapeHtml(replay.players[latest.slot].pseudonym)}</b> ${latest.text ? escapeHtml(latest.text) : "<i>says nothing.</i>"}`;
-    } else {
-      captionBox.classList.remove("show");
-    }
+    if (showCaption && latest) showLeaf(latest);
+    else leaf.group.classList.remove("show");
   }
 
   // ---------------------------------------------------------------- frames
