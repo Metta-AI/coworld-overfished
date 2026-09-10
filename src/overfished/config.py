@@ -66,7 +66,10 @@ class LlmConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     think_turns: int = Field(default=1, ge=0, le=6, description="Private reasoning replies allowed before each action.")
-    timeout_seconds: float = Field(default=90.0, gt=0, description="Per model call. Opus-class models need over 30s for a full reply.")
+    timeout_seconds: float = Field(default=60.0, gt=0, description="Per model call. Opus-class replies take 10 to 20s on OpenRouter.")
+    decision_seconds: float = Field(
+        default=75.0, gt=0, description="Whole decision incl. thinking turns and retries; past it the seat plays the fallback."
+    )
     max_output_tokens: int = Field(default=4000, ge=128, le=16000, description="Covers hidden reasoning plus the JSON reply for reasoning models.")
     notebook_max_chars: int = Field(default=1500, ge=0, le=8000, description="Private notes carried across turns.")
     say_max_chars: int = Field(default=500, ge=1, le=4000, description="One council message.")
@@ -89,13 +92,14 @@ class GameConfig(BaseModel):
     seed: int = Field(default=0, ge=0, description="0 means draw a fresh random seed at startup.")
     turns: int = Field(default=60, ge=1, le=1000)
     commune_every: int = Field(default=5, ge=1, description="Hold a council after every N fishing turns.")
-    commune_rounds: int = Field(default=2, ge=0, le=6, description="Speaking rounds per council; 0 disables talk.")
+    commune_rounds: int = Field(default=2, ge=0, le=6, description="Speaking rounds per council, one fisher at a time; 0 disables talk.")
     commune_at_start: bool = Field(default=True, description="Hold an opening council before turn 1.")
     boat_capacity: int = Field(default=25, ge=1, description="Fish one boat lands per turn at full effort on a full lake.")
+    punish_ratio: int = Field(default=4, ge=1, description="Fish destroyed on the target for each fish the punisher burns.")
     history_turns: int = Field(default=10, ge=1, le=100, description="Recent turns shown in every observation.")
     punishments_public: bool = Field(default=True, description="Whether the ledger names who punished whom.")
     reveal_models: bool = Field(default=True, description="Put each seat's model in results and replay.")
-    episode_wall_seconds: float = Field(default=900.0, gt=0, description="LLM wall budget; past it seats go scripted.")
+    episode_wall_seconds: float = Field(default=1800.0, gt=0, description="LLM wall budget; past it seats go scripted.")
     lake: LakeConfig = Field(default_factory=LakeConfig)
     llm: LlmConfig = Field(default_factory=LlmConfig)
     model_aliases: dict[str, str] = Field(default_factory=lambda: dict(DEFAULT_MODEL_ALIASES))

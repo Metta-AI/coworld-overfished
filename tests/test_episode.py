@@ -12,6 +12,7 @@ from overfished.soul import SoulError
 from overfished.__main__ import stage_local_episode
 
 SOULS = Path(__file__).resolve().parent.parent / "souls"
+VILLAGER = SOULS / "examples" / "villager.md"
 
 
 def config_for(souls: list[Path], **overrides) -> GameConfig:
@@ -39,6 +40,7 @@ class FakeTransport(Transport):
         self.session = None
         self.slots_seen: set[int] = set()
         self.replies = replies
+        self.council_prompts: list[str] = []
 
     @property
     def describe(self) -> str:
@@ -48,13 +50,15 @@ class FakeTransport(Transport):
         self.calls += 1
         self.slots_seen.add(slot)
         assert model.startswith("anthropic/") or "/" in model
+        assert reasoning == {"effort": "low"}
         if self.replies is not None:
             return self.replies.pop(0)
         last = messages[-1]["content"]
         if last.startswith("Continue privately"):
             return json.dumps({"thinking": "ok, deciding", "notebook": "keep at 50%", "effort": 0.5, "punish": []})
         if "COUNCIL" in last[:60]:
-            return json.dumps({"thinking": "say something", "say": "Let us all fish at half."})
+            self.council_prompts.append(last)
+            return json.dumps({"thinking": "say something", "say": f"Seat {slot} says: let us all fish at half."})
         return json.dumps({"thinking": "let me think more", "continue": True})
 
 
@@ -85,7 +89,7 @@ async def test_scripted_episode_writes_every_artifact(tmp_path: Path):
 
 
 async def test_soul_seats_think_then_act_and_talk(tmp_path: Path):
-    villager = SOULS / "villager.md"
+    villager = VILLAGER
     souls = [villager, villager, SOULS / "steady.md"]
     transport = FakeTransport()
     results, replay, out = await run_episode(tmp_path, souls, transport)
@@ -95,7 +99,14 @@ async def test_soul_seats_think_then_act_and_talk(tmp_path: Path):
         assert turn["effort"][0] == 0.5 and turn["effort"][1] == 0.5
         assert turn["auto"] == []
     said = [s["text"] for c in replay["communes"] for r in c["rounds"] for s in r if s["slot"] == 0]
-    assert said and all(t == "Let us all fish at half." for t in said)
+    assert said and all(t == "Seat 0 says: let us all fish at half." for t in said)
+    # speaking is sequential: the second speaker's prompt already quotes the first speaker of that round
+    first_council = replay["communes"][0]
+    assert first_council["order"] == [0, 1, 2]
+    assert [s["slot"] for s in first_council["rounds"][0]] == [0, 1, 2]
+    second_speaker_prompts = [p for p in transport.council_prompts if "You speak 2nd" in p]
+    assert second_speaker_prompts and "Seat 0 says" in second_speaker_prompts[0]
+    assert replay["communes"][1]["order"] == [1, 2, 0]
     log = (out / "logs" / "policy_agent_0.log").read_text()
     assert "thinking: let me think more" in log
     assert "raw reply" in log
@@ -105,7 +116,7 @@ async def test_soul_seats_think_then_act_and_talk(tmp_path: Path):
 
 
 async def test_bad_replies_fall_back_and_are_marked_auto(tmp_path: Path):
-    villager = SOULS / "villager.md"
+    villager = VILLAGER
     souls = [villager, SOULS / "steady.md"]
     transport = FakeTransport(replies=["garbage"] * 200)
     results, replay, out = await run_episode(tmp_path, souls, transport, commune_rounds=1, turns=2)
@@ -116,7 +127,7 @@ async def test_bad_replies_fall_back_and_are_marked_auto(tmp_path: Path):
 
 
 async def test_exhausted_wall_budget_goes_scripted(tmp_path: Path):
-    villager = SOULS / "villager.md"
+    villager = VILLAGER
     transport = FakeTransport()
     souls = [villager, villager]
     config = config_for(souls, turns=2)
@@ -147,7 +158,7 @@ async def test_rejected_soul_declares_player_failure(tmp_path: Path):
 
 
 async def test_soul_seat_without_transport_crashes_loudly(tmp_path: Path):
-    souls = [SOULS / "villager.md", SOULS / "steady.md"]
+    souls = [VILLAGER, SOULS / "steady.md"]
     config = config_for(souls)
     seats_path, artifacts = stage_local_episode(config, souls, tmp_path)
     document = load_seats(seats_path.resolve().as_uri())
@@ -189,3 +200,25 @@ async def test_serve_episode_http_surface(tmp_path: Path, unused_tcp_port: int):
             assert pong is None or True  # aiohttp answers pings at the protocol level
     assert await task == 0
     assert (tmp_path / "results.json").exists()
+
+
+class SlowTransport(FakeTransport):
+    async def complete(self, **kwargs) -> str:
+        import asyncio
+
+        self.calls += 1
+        await asyncio.sleep(0.5)
+        return json.dumps({"thinking": "slow", "effort": 0.9, "punish": []})
+
+
+async def test_decision_deadline_falls_back(tmp_path: Path):
+    souls = [VILLAGER, SOULS / "steady.md"]
+    config = config_for(souls, turns=2, commune_rounds=0, llm={"decision_seconds": 0.1, "reasoning": {"effort": "low"}})
+    seats_path, artifacts = stage_local_episode(config, souls, tmp_path)
+    document = load_seats(seats_path.resolve().as_uri())
+    transport = SlowTransport()
+    episode = Episode.from_seats(config, 7, document, transport, artifacts)
+    await episode.run()
+    replay = json.loads((tmp_path / "replay").read_text())
+    assert all(0 in turn["auto"] for turn in replay["turns"])
+    assert "exceeded" in (tmp_path / "logs" / "policy_agent_0.log").read_text()

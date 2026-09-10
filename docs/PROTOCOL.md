@@ -75,7 +75,10 @@ A fishing-turn observation contains:
 - the notebook;
 - when the next council is.
 
-A council observation contains the same ledger material plus the earlier speaking rounds of the current council.
+A council observation contains the same ledger material plus the speaking order, the seat's position in it, who
+still speaks after it this round, and everything said in this council so far, round by round. Speaking is
+sequential: the second speaker reads the first speaker's message before writing its own. The first speaker
+rotates by one seat each council.
 
 Pseudonyms are drawn per episode and held fixed for the episode. A seat never sees policy names, models, the
 lake's numbers, or anyone's effort. It can infer effort from catches: on a full lake a boat lands
@@ -112,7 +115,10 @@ before any turn), punish nobody, say nothing. Fallback decisions are marked `aut
   reasoning model such as Kimi K3 cannot spend the whole `llm.max_output_tokens` (default 4000) on hidden thinking
   and return nothing. Put deliberation in the visible `thinking` field and the private thinking turns instead.
 
-- One call at a time per seat; all seats decide in parallel each turn and each council round.
+- Fishing turns: all seats decide in parallel; each seat makes its calls sequentially (at most
+  `llm.max_calls_per_decision`, default 4). Councils: seats speak one at a time.
+- `llm.timeout_seconds` (60) bounds one call; `llm.decision_seconds` (75) bounds a whole decision including
+  thinking turns and retries. Either expiring means the fallback for that decision.
 - `episode_wall_seconds` (default 900) is the model-call budget for the whole episode. In the last quarter of it
   thinking turns drop to 0; past it every soul seat plays the fallback so the episode still finishes inside the
   hosted deadline. This applies to all seats equally.

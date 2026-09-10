@@ -7,7 +7,7 @@
     "llm",
     "soul-md"
   ],
-  "episode_timeout_minutes": 20,
+  "episode_timeout_minutes": 45,
   "game": {
     "name": "overfished",
     "description": "Eight fishers share one lake with a hidden population that can collapse for good. Each turn every seat picks how hard to fish and may burn its own fish to burn a rival's; every five turns the seats hold a council with no rules but talk. A player is a soul.md: line 1 names the model, the rest is a philosophy. Score is the fish you hold at the end.",
@@ -66,10 +66,17 @@
               "type": "integer"
             },
             "timeout_seconds": {
-              "default": 90.0,
-              "description": "Per model call. Opus-class models need over 30s for a full reply.",
+              "default": 60.0,
+              "description": "Per model call. Opus-class replies take 10 to 20s on OpenRouter.",
               "exclusiveMinimum": 0,
               "title": "Timeout Seconds",
+              "type": "number"
+            },
+            "decision_seconds": {
+              "default": 75.0,
+              "description": "Whole decision incl. thinking turns and retries; past it the seat plays the fallback.",
+              "exclusiveMinimum": 0,
+              "title": "Decision Seconds",
               "type": "number"
             },
             "max_output_tokens": {
@@ -195,7 +202,7 @@
         },
         "commune_rounds": {
           "default": 2,
-          "description": "Speaking rounds per council; 0 disables talk.",
+          "description": "Speaking rounds per council, one fisher at a time; 0 disables talk.",
           "maximum": 6,
           "minimum": 0,
           "title": "Commune Rounds",
@@ -212,6 +219,13 @@
           "description": "Fish one boat lands per turn at full effort on a full lake.",
           "minimum": 1,
           "title": "Boat Capacity",
+          "type": "integer"
+        },
+        "punish_ratio": {
+          "default": 4,
+          "description": "Fish destroyed on the target for each fish the punisher burns.",
+          "minimum": 1,
+          "title": "Punish Ratio",
           "type": "integer"
         },
         "history_turns": {
@@ -235,7 +249,7 @@
           "type": "boolean"
         },
         "episode_wall_seconds": {
-          "default": 900.0,
+          "default": 1800.0,
           "description": "LLM wall budget; past it seats go scripted.",
           "exclusiveMinimum": 0,
           "title": "Episode Wall Seconds",
@@ -493,7 +507,7 @@
     {
       "id": "long-season",
       "name": "Long season (8 seats, 200 turns)",
-      "description": "200 turns for local experiments. Hosted episodes have a 20 minute deadline, so this variant needs fast models or the wall budget cuts thinking.",
+      "description": "200 turns for local experiments. The manifest asks for a 45 minute hosted deadline; the wall budget cuts thinking, then goes scripted, if models are slow.",
       "game_config": {
         "players": [
           {
@@ -522,7 +536,7 @@
           }
         ],
         "turns": 200,
-        "episode_wall_seconds": 1000.0
+        "episode_wall_seconds": 2400.0
       }
     }
   ],

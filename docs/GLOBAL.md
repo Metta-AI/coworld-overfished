@@ -20,7 +20,7 @@ Every message is a JSON object with a `type`:
 | `type` | Payload | When |
 | --- | --- | --- |
 | `snapshot` | `phase`, `live`, `replay` (the replay document so far) | On connect. |
-| `speech` | `before_turn`, `round`, `speeches[]` | After each council speaking round. |
+| `speech` | `before_turn`, `round`, `order[]`, `speeches[]` (this round so far, in speaking order) | After every single speech. |
 | `commune` | `commune` (a full council record) | After the council's last round. |
 | `turn` | `turn` (a turn record) | After each fishing turn resolves. |
 | `end` | `scores[]` | After results are written. |
@@ -35,18 +35,20 @@ viewer sniffs the gzip magic rather than trusting the URL. A 60-turn, 8-seat epi
   "schema": "overfished-replay/1",
   "seed": 7,
   "game": {"turns": 60, "commune_every": 5, "commune_rounds": 2, "commune_at_start": true,
-           "boat_capacity": 25, "punishments_public": true},
+           "boat_capacity": 25, "punish_ratio": 4, "punishments_public": true},
   "lake": {"capacity": 1193.0, "growth_rate": 0.27, "collapse_threshold": 139.5, "initial_stock": 976.4},
   "players": [{"slot": 0, "pseudonym": "Padma", "policy": "villager", "model": "anthropic/claude-opus-5"}],
   "turns": [{"t": 1, "stock_before": 976.4, "effort": [0.4, 1.0], "catch": [8, 20],
-             "punish": [{"frm": 0, "to": 1, "fish": 1}], "fish": [7, 19], "stock_after": 939.1, "auto": []}],
-  "communes": [{"before_turn": 1, "rounds": [[{"slot": 0, "text": "...", "auto": false}]]}],
+             "punish": [{"frm": 0, "to": 1, "fish": 4, "cost": 1}], "fish": [7, 16], "stock_after": 939.1, "auto": []}],
+  "communes": [{"before_turn": 1, "order": [0, 1], "rounds": [[{"slot": 0, "text": "...", "auto": false}]]}],
   "scores": [89, 191]
 }
 ```
 
 - `lake` is the sampled hidden model. Spectators and analysts see it; seats never do.
 - `turns[].effort` is per seat, in [0, 1]. Efforts are private in-game and public in the replay.
+- `turns[].punish[]` has `fish` (destroyed on the target) and `cost` (burned by the punisher).
+- `communes[].order` is the speaking order; `rounds[][]` lists speeches in that order.
 - `turns[].auto` lists seats whose action was the fallback. `speeches[].auto` marks a fallback (silent) message.
 - `players[].model` and the `models` array in results are present when `reveal_models` is true (the default).
 - Private thinking and notebooks are never in the replay.

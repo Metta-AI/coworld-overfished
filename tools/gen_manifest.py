@@ -76,7 +76,7 @@ def manifest() -> dict:
     return {
         "$schema": "https://raw.githubusercontent.com/Metta-AI/coworld/main/src/coworld/coworld_manifest_schema.json",
         "tags": ["commons", "negotiation", "social", "llm", "soul-md"],
-        "episode_timeout_minutes": 20,
+        "episode_timeout_minutes": 45,
         "game": {
             "name": "overfished",
             "description": (
@@ -118,9 +118,9 @@ def manifest() -> dict:
             variant(
                 "long-season",
                 "Long season (8 seats, 200 turns)",
-                "200 turns for local experiments. Hosted episodes have a 20 minute deadline, so this variant needs fast models or the wall budget cuts thinking.",
+                "200 turns for local experiments. The manifest asks for a 45 minute hosted deadline; the wall budget cuts thinking, then goes scripted, if models are slow.",
                 turns=200,
-                episode_wall_seconds=1000.0,
+                episode_wall_seconds=2400.0,
             ),
         ],
         "certification": {

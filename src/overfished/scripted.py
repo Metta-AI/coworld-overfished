@@ -47,7 +47,7 @@ class ScriptedPolicy:
         if self.name == "enforcer":
             return (
                 f"I fish at {int(self.effort * 100)}% of capacity. Anyone who lands far more than the rest "
-                "will lose fish to me, even though it costs me the same."
+                "will have fish destroyed by me, turn after turn, for as long as it goes on."
             )
         return f"I fish at {int(self.effort * 100)}% of capacity every turn and hope you will match it."
 

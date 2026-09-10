@@ -56,7 +56,8 @@ class PunishRecord(BaseModel):
 
     frm: int
     to: int
-    fish: int
+    fish: int = Field(description="Fish destroyed on the target.")
+    cost: int = Field(description="Fish the punisher burned.")
 
 
 class TurnRecord(BaseModel):
@@ -76,7 +77,8 @@ class CommuneRecord(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     before_turn: int
-    rounds: list[list[Speech]]
+    order: list[int] = Field(description="Speaking order, the same in every round; the first seat rotates per council.")
+    rounds: list[list[Speech]] = Field(description="Speeches in speaking order.")
 
 
 def sample_lake(config: GameConfig, seed: int) -> Lake:
@@ -147,8 +149,14 @@ class Engine:
             return self.config.commune_at_start
         return played % self.config.commune_every == 0
 
-    def record_commune(self, rounds: list[list[Speech]]) -> CommuneRecord:
-        record = CommuneRecord(before_turn=self.turn, rounds=rounds)
+    def council_order(self) -> list[int]:
+        """Speaking order for the next council: the first seat rotates by one each council."""
+        n = self.config.num_players
+        first = len(self.communes) % n
+        return [(first + i) % n for i in range(n)]
+
+    def record_commune(self, rounds: list[list[Speech]], order: list[int] | None = None) -> CommuneRecord:
+        record = CommuneRecord(before_turn=self.turn, order=order or self.council_order(), rounds=rounds)
         self.communes.append(record)
         return record
 
@@ -167,16 +175,18 @@ class Engine:
             self.last_effort[slot] = actions[slot].effort
 
         punishments: list[PunishRecord] = []
+        ratio = self.config.punish_ratio
         for slot, action in enumerate(actions):
             for p in action.punish:
                 if p.target == slot or not 0 <= p.target < self.config.num_players:
                     continue
-                fish = min(p.fish, self.fish[slot], self.fish[p.target])
-                if fish <= 0:
+                burned = min(p.fish, self.fish[slot])
+                destroyed = min(burned * ratio, self.fish[p.target])
+                if burned <= 0 or destroyed <= 0:
                     continue
-                self.fish[slot] -= fish
-                self.fish[p.target] -= fish
-                punishments.append(PunishRecord(frm=slot, to=p.target, fish=fish))
+                self.fish[slot] -= burned
+                self.fish[p.target] -= destroyed
+                punishments.append(PunishRecord(frm=slot, to=p.target, fish=destroyed, cost=burned))
 
         after_catch = self.stock - total
         self.stock = min(self.lake.capacity, max(0.0, after_catch + growth(self.lake, after_catch)))
@@ -215,6 +225,7 @@ class Engine:
                 "commune_rounds": self.config.commune_rounds,
                 "commune_at_start": self.config.commune_at_start,
                 "boat_capacity": self.config.boat_capacity,
+                "punish_ratio": self.config.punish_ratio,
                 "punishments_public": self.config.punishments_public,
             },
             "lake": self.lake.model_dump(),

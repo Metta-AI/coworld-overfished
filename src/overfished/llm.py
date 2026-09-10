@@ -108,11 +108,20 @@ def mechanics_block(config: GameConfig, pseudonym: str, seat_count: int) -> str:
     council = (
         f"Every {config.commune_every} turns"
         + (", and once before turn 1," if config.commune_at_start else "")
-        + f" the {seat_count} of you hold a council: {config.commune_rounds} speaking round(s), everyone speaks "
-        "at once in each round and reads all earlier rounds. Messages are public and permanent. "
-        f"Each message is at most {llm.say_max_chars} characters."
+        + f" the {seat_count} of you hold a council of {config.commune_rounds} speaking round(s). In each round the "
+        "fishers speak one at a time in a fixed order, each reading everything said before them in this council; "
+        "the order is the same in every round of a council and the first speaker rotates each council. You may say "
+        f"nothing. Messages are public and permanent, at most {llm.say_max_chars} characters each."
         if config.commune_rounds > 0
         else "There is no council in this variant: you never talk."
+    )
+    ratio = config.punish_ratio
+    punishment = (
+        f"PUNISHMENT. Each turn you may burn your own fish to destroy a named fisher's: each fish you burn destroys "
+        f"{ratio} of theirs. Burn 2 and they lose {2 * ratio}. A target cannot lose more than they hold. "
+        + ("Punishments are public: everyone sees who punished whom, how much it cost, and how much was destroyed."
+           if config.punishments_public
+           else "Punishments are anonymous: the target sees the loss, nobody sees the sender.")
     )
     return f"""
 === THE GAME: OVERFISHED ===
@@ -133,8 +142,7 @@ proportion, so catch = effort x {config.boat_capacity} x (lake fullness). Fish a
 the fleet asks for more than the lake holds, the lake is emptied and shared in proportion to effort.
 Everyone's catch each turn is public. Efforts are private, but a catch reveals a lot about effort.
 
-PUNISHMENT. Each turn you may destroy fish: for every one of your own fish you destroy, one fish is
-destroyed from a named fisher's stock. It costs you exactly what it costs them. {"Punishments are public: everyone sees who punished whom and by how much." if config.punishments_public else "Punishments are anonymous: the target sees the loss, nobody sees the sender."}
+{punishment}
 
 COUNCIL. {council}
 There are no other mechanics: no enforceable contracts, no votes, no alliances beyond what people say and
@@ -145,7 +153,8 @@ record, ever reads them. Only what you put in `say` during a council is public. 
 back to you every turn; keep it under {llm.notebook_max_chars} characters and use it to remember plans,
 promises made to you, and grudges.
 
-REPLY FORMAT. Reply with exactly one JSON object and nothing else. On a fishing turn:
+REPLY FORMAT. Reply with exactly one JSON object and nothing else. Keep `thinking` under 150 words: a decision
+that takes too long to write is replaced by your default action. On a fishing turn:
   {{"thinking": "<private>", "notebook": "<private, replaces the old notebook>",
    "effort": <number 0 to 1>, "punish": [{{"target": "<fisher name>", "fish": <whole number>}}]}}
   `punish` may be an empty list. At a council:
@@ -180,7 +189,7 @@ def _punishments(engine: Engine, history: int) -> str:
     for record in engine.turns[-history:]:
         for p in record.punish:
             if engine.config.punishments_public:
-                lines.append(f"turn {record.t}: {names[p.frm]} destroyed {p.fish} of {names[p.to]}'s fish (and {p.fish} of their own)")
+                lines.append(f"turn {record.t}: {names[p.frm]} burned {p.cost} of their own fish to destroy {p.fish} of {names[p.to]}'s")
             else:
                 lines.append(f"turn {record.t}: {names[p.to]} lost {p.fish} fish to an anonymous punishment")
     if not lines:
@@ -244,21 +253,37 @@ def turn_observation(engine: Engine, slot: int, notebook: str) -> str:
     )
 
 
-def council_observation(engine: Engine, slot: int, notebook: str, round_index: int, earlier: list[list]) -> str:
+def council_observation(
+    engine: Engine,
+    slot: int,
+    notebook: str,
+    round_index: int,
+    order: list[int],
+    earlier: list[list],
+    so_far: list,
+) -> str:
     config = engine.config
     name = engine.pseudonyms[slot]
     names = engine.pseudonyms
-    earlier_text = []
+    lines = []
     for r, speeches in enumerate(earlier):
-        said = [f'{names[s.slot]}: "{s.text}"' for s in speeches if s.text]
-        earlier_text.append(f"  round {r + 1}: " + (" | ".join(said) if said else "(silence)"))
+        lines.append(f"  round {r + 1}:")
+        for s in speeches:
+            lines.append(f'    {names[s.slot]}: "{s.text}"' if s.text else f"    {names[s.slot]}: (says nothing)")
+    lines.append(f"  round {round_index + 1} (this round, so far):")
+    for s in so_far:
+        lines.append(f'    {names[s.slot]}: "{s.text}"' if s.text else f"    {names[s.slot]}: (says nothing)")
+    if not so_far:
+        lines.append("    nobody has spoken yet this round")
+    position = order.index(slot) + 1
+    after = [names[o] for o in order[position:]]
     this = (
         f"COUNCIL before turn {engine.turn}, speaking round {round_index + 1} of {config.commune_rounds}. You are {name}.\n"
-        + (
-            "Earlier rounds of this council:\n" + "\n".join(earlier_text)
-            if earlier_text
-            else "This is the first round; nobody has spoken yet."
-        )
+        f"Speaking order this council: {', '.join(names[o] for o in order)}. You speak {position}"
+        f"{'st' if position == 1 else 'nd' if position == 2 else 'rd' if position == 3 else 'th'}"
+        + (f"; still to speak after you this round: {', '.join(after)}." if after else "; you speak last this round.")
+        + "\nSaid in this council so far:\n"
+        + "\n".join(lines)
     )
     return "\n\n".join(
         [
@@ -269,7 +294,7 @@ def council_observation(engine: Engine, slot: int, notebook: str, round_index: i
             _own_catches(engine, slot, config.history_turns),
             _council_transcript(engine, 1) if engine.communes else "COUNCILS so far: none.",
             f"YOUR NOTEBOOK: {notebook if notebook else '(empty)'}",
-            f"Everyone speaks at once this round; all messages are public. Say what you want to say (up to {config.llm.say_max_chars} characters) or an empty string. Reply with one JSON object.",
+            f"It is your turn to speak; all messages are public. Say what you want to say (up to {config.llm.say_max_chars} characters) or an empty string. Reply with one JSON object.",
         ]
     )
 
@@ -383,8 +408,23 @@ async def decide(
 ) -> Decision:
     """Run the private thinking loop until the seat commits to an action or a council message."""
     config = engine.config.llm
-    messages = [{"role": "system", "content": brain.system_prompt}, {"role": "user", "content": observation}]
     decision = Decision()
+    try:
+        async with asyncio.timeout(config.decision_seconds):
+            await _decide_calls(brain, transport, engine, observation, council, think_turns, log, decision)
+    except TimeoutError:
+        log(f"decision exceeded {config.decision_seconds:.0f}s in total; falling back")
+        decision.action = None
+        decision.say = None
+    if decision.action is None and decision.say is None:
+        decision.auto = True
+        brain.fallbacks += 1
+    return decision
+
+
+async def _decide_calls(brain, transport, engine, observation, council, think_turns, log, decision) -> None:
+    config = engine.config.llm
+    messages = [{"role": "system", "content": brain.system_prompt}, {"role": "user", "content": observation}]
     thinks_left = think_turns
     retries_left = 1
     for _ in range(config.max_calls_per_decision):
@@ -431,20 +471,17 @@ async def decide(
             continue
         if council:
             decision.say = clip(reply.get("say"), config.say_max_chars)
-            return decision
+            return
         parsed = parse_action(reply, engine, brain.slot)
         if isinstance(parsed, Action):
             decision.action = parsed
-            return decision
+            return
         log(f"invalid action: {parsed}; " + ("asking once more" if retries_left else "giving up"))
         if retries_left == 0:
             break
         retries_left -= 1
         messages.append({"role": "assistant", "content": reply_text})
         messages.append({"role": "user", "content": f"Invalid: {parsed}. Reply with one corrected JSON object."})
-    decision.auto = True
-    brain.fallbacks += 1
-    return decision
 
 
 def elapsed_since(start: float) -> float:

@@ -210,7 +210,15 @@ class Episode:
         )
         return decision.action
 
-    async def council_decision(self, seat: SeatRuntime, round_index: int, earlier: list[list[Speech]], think_turns: int) -> Speech:
+    async def council_decision(
+        self,
+        seat: SeatRuntime,
+        round_index: int,
+        order: list[int],
+        earlier: list[list[Speech]],
+        so_far: list[Speech],
+        think_turns: int,
+    ) -> Speech:
         if seat.scripted is not None:
             text = seat.scripted.say(self.engine, seat.slot, round_index)
             return Speech(slot=seat.slot, text=text[: self.config.llm.say_max_chars])
@@ -218,7 +226,7 @@ class Episode:
         if think_turns < 0:
             seat.note(f"council before turn {self.engine.turn} round {round_index + 1}: LLM wall budget exhausted; silent")
             return Speech(slot=seat.slot, text="", auto=True)
-        observation = council_observation(self.engine, seat.slot, seat.brain.notebook, round_index, earlier)
+        observation = council_observation(self.engine, seat.slot, seat.brain.notebook, round_index, order, earlier, so_far)
         seat.note(f"council before turn {self.engine.turn} round {round_index + 1}: observation\n{observation}")
 
         def note(line: str) -> None:
@@ -238,23 +246,27 @@ class Episode:
     # ---- phases ----------------------------------------------------------------------
 
     async def hold_council(self) -> None:
+        """Fishers speak one at a time in a rotating order; every round of a council keeps the same order."""
         self.phase = "council"
+        order = self.engine.council_order()
         rounds: list[list[Speech]] = []
         for round_index in range(self.config.commune_rounds):
-            think_turns = self.think_turns_now()
-            speeches = await asyncio.gather(
-                *(self.council_decision(seat, round_index, rounds, think_turns) for seat in self.seats)
-            )
-            rounds.append(list(speeches))
-            await self.broadcast(
-                {
-                    "type": "speech",
-                    "before_turn": self.engine.turn,
-                    "round": round_index,
-                    "speeches": [s.model_dump() for s in speeches],
-                }
-            )
-        record = self.engine.record_commune(rounds)
+            speeches: list[Speech] = []
+            for slot in order:
+                think_turns = self.think_turns_now()
+                speech = await self.council_decision(self.seats[slot], round_index, order, rounds, speeches, think_turns)
+                speeches.append(speech)
+                await self.broadcast(
+                    {
+                        "type": "speech",
+                        "before_turn": self.engine.turn,
+                        "round": round_index,
+                        "order": order,
+                        "speeches": [s.model_dump() for s in speeches],
+                    }
+                )
+            rounds.append(speeches)
+        record = self.engine.record_commune(rounds, order)
         log(f"council before turn {record.before_turn}: {sum(1 for r in rounds for s in r if s.text)} messages")
         await self.broadcast({"type": "commune", "commune": record.model_dump()})
 

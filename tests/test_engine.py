@@ -63,17 +63,37 @@ def test_defector_earns_more_but_less_than_double_when_others_are_moderate():
     assert scores[0] < 3 * min(scores[1:])
 
 
-def test_punishment_costs_both_and_is_clipped():
-    engine = Engine(config(seats=2, turns=3), 3)
+def test_punishment_destroys_ratio_times_the_cost():
+    engine = Engine(config(seats=2, turns=3, punish_ratio=4), 3)
+    engine.resolve_turn([Action(effort=1.0), Action(effort=1.0)])
+    before = list(engine.fish)
+    engine.resolve_turn([Action(effort=0.0, punish=[Punishment(target=1, fish=2)]), Action(effort=0.0)])
+    record = engine.turns[-1]
+    assert record.punish[0].cost == 2 and record.punish[0].fish == 8
+    assert engine.fish[0] == before[0] - 2
+    assert engine.fish[1] == before[1] - 8
+
+
+def test_punishment_is_clipped_to_holdings():
+    engine = Engine(config(seats=2, turns=3, punish_ratio=4), 3)
     engine.resolve_turn([Action(effort=1.0), Action(effort=1.0)])
     before = list(engine.fish)
     engine.resolve_turn([Action(effort=0.0, punish=[Punishment(target=1, fish=1000)]), Action(effort=0.0)])
     record = engine.turns[-1]
-    assert len(record.punish) == 1
-    burned = record.punish[0].fish
-    assert burned == min(before)
-    assert engine.fish[0] == before[0] - burned
-    assert engine.fish[1] == before[1] - burned
+    assert record.punish[0].cost == before[0]
+    assert record.punish[0].fish == before[1]
+    assert engine.fish == [0, 0]
+
+
+def test_coalition_of_four_drops_a_full_effort_fisher_below_them():
+    """The tuning target: four moderates burning one fish a turn each put the overfisher below them."""
+    engine = Engine(config(), 7)
+    for _ in range(10):
+        actions = [Action(effort=1.0)] + [Action(effort=0.4) for _ in range(7)]
+        for slot in range(1, 5):
+            actions[slot] = Action(effort=0.4, punish=[Punishment(target=0, fish=1)])
+        engine.resolve_turn(actions)
+    assert engine.fish[0] < min(engine.fish[1:5])
 
 
 def test_self_punishment_and_bad_targets_are_ignored():
@@ -85,16 +105,21 @@ def test_self_punishment_and_bad_targets_are_ignored():
     assert engine.fish == fish
 
 
-def test_commune_schedule():
+def test_commune_schedule_and_rotating_order():
     engine = Engine(config(turns=12, commune_every=5), 7)
-    schedule = []
+    schedule, orders = [], []
     while not engine.finished:
         if engine.commune_due():
             schedule.append(engine.turn)
+            orders.append(engine.council_order())
             engine.record_commune([])
         engine.resolve_turn([Action(effort=0.1)] * 8)
     assert schedule == [1, 6, 11]
     assert engine.commune_due() is False
+    assert orders[0] == [0, 1, 2, 3, 4, 5, 6, 7]
+    assert orders[1] == [1, 2, 3, 4, 5, 6, 7, 0]
+    assert orders[2] == [2, 3, 4, 5, 6, 7, 0, 1]
+    assert engine.communes[1].order == orders[1]
 
 
 def test_commune_disabled():

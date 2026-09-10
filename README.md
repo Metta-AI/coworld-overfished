@@ -30,7 +30,7 @@ episode, no player containers. Public repo: `Metta-AI/coworld-overfished`.
    ```bash
    uv venv && uv pip install -e '.[test]'
    OPENROUTER_API_KEY=... .venv/bin/overfished run --out runs/try --turns 10 \
-     --soul my_soul.md --soul souls/villager.md --soul souls/steady.md --soul souls/greedy.md
+     --soul my_soul.md --soul souls/examples/villager.md --soul souls/steady.md --soul souls/greedy.md
    ```
 
    `runs/try/logs/policy_agent_0.log` is your seat's private log: every observation, every thought, every
@@ -56,11 +56,16 @@ episode, no player containers. Public repo: `Metta-AI/coworld-overfished`.
   (K 800 to 1200, r 0.25 to 0.35 per turn, A 8 to 14% of K, start 70 to 90% of K). Eight boats at full effort
   kill a default lake in about 30 turns; eight boats at 40% hold it near 70% of capacity indefinitely; one
   defector among seven moderates roughly doubles their own catch.
-- **Punishment.** Each turn a seat may destroy fish from named fishers, one of its own for each one destroyed.
-  Amounts are clipped to what both hold. Public by default (`punishments_public`).
-- **Council.** Before turn 1 and after every `commune_every` (5) turns: `commune_rounds` (2) speaking rounds,
-  everyone speaking at once within a round and reading earlier rounds. Up to 500 characters a message. Talk is
-  public and permanent. There are no other mechanics: no contracts, votes, or alliances beyond words and deeds.
+- **Punishment.** Each turn a seat may burn its own fish to destroy a named fisher's: each fish burned destroys
+  `punish_ratio` (4) of the target's, clipped to what the target holds. Public by default (`punishments_public`).
+  The ratio is tuned so a coalition can win: a full-effort fisher lands about 20 a turn against 8 for a moderate,
+  so four moderates burning one fish each leave the overfisher at 4 a turn against their 7, and three leave it
+  roughly level. At 1:1 even seven punishers could not catch a lone overfisher, which is what made the number.
+- **Council.** Before turn 1 and after every `commune_every` (5) turns: `commune_rounds` (2) speaking rounds.
+  Within a round fishers speak one at a time in a fixed order, each reading everything said before them; the
+  order is the same in both rounds and the first speaker rotates by one seat each council, so nobody always
+  goes first or last. A fisher may say nothing. Up to 500 characters a message. Talk is public and permanent.
+  There are no other mechanics: no contracts, votes, or alliances beyond words and deeds.
 - **Score.** Fish held at the end of the episode, an absolute number. Standing is the mean of that across
   episodes of a variant, so first place in an episode is worth nothing in itself, and a fisher who empties
   lakes to come first averages less than one who leaves them full. Seats are told this in their prompt.
@@ -70,6 +75,13 @@ private replies, then it must act), and it keeps a private notebook of up to 1,5
 A seat whose model fails, times out, or never produces a valid decision plays the fallback for that decision:
 repeat its last effort, punish nobody, say nothing. Those decisions are marked `auto` in the replay.
 
+Timing, per seat and per decision: each model call has `llm.timeout_seconds` (60) and the whole decision,
+thinking turns and retries included, has `llm.decision_seconds` (75); every seat decides in parallel on a fishing
+turn, so a turn costs one slow decision, not eight. Councils are sequential by design: 8 seats × 2 rounds is 16
+decisions in a row. Over the episode, `episode_wall_seconds` (1800) caps model time: in its last quarter thinking
+turns drop to zero, past it every seat plays the fallback, applied to all seats equally. The manifest asks for a
+45 minute hosted deadline.
+
 ## Variants
 
 | Variant | Seats | Turns | Notes |
@@ -77,7 +89,7 @@ repeat its last effort, punish nobody, say nothing. Those decisions are marked `
 | `village` | 8 | 60 | League default. Council before turn 1 and after every 5 turns. |
 | `pond` | 4 | 30 | Cheap smoke variant for trying a soul. |
 | `quiet-lake` | 8 | 60 | No council. Only the ledger and punishment carry signal. |
-| `long-season` | 8 | 200 | For local experiments. Hosted episodes have a 20 minute deadline, so the wall budget cuts thinking, then goes scripted. |
+| `long-season` | 8 | 200 | For local experiments; the wall budget cuts thinking, then goes scripted, if models are slow. |
 
 Leaderboard intent: a policy's standing is its mean score across episodes of the same variant, and only
 same-variant scores are comparable (a 200-turn lake pays out more than a 60-turn one).
@@ -123,15 +135,15 @@ Package and certify with the Coworld CLI (game-hosted support is on the `coworld
 ```bash
 uv run coworld build --project . --version 0.1.0
 uv run coworld run-episode dist/coworld_manifest.json                 # bundled scripted seats, no model calls
-uv run coworld run-episode dist/coworld_manifest.json --variant pond my_soul.md souls/villager.md souls/steady.md souls/greedy.md
+uv run coworld run-episode dist/coworld_manifest.json --variant pond my_soul.md souls/examples/villager.md souls/steady.md souls/greedy.md
 uv run coworld certify dist/coworld_manifest.json
 uv run coworld upload-coworld dist/coworld_manifest.json --wait-certification
 ```
 
 Layout: `src/overfished/` (engine, soul parsing, scripted baselines, LLM harness, server), `souls/` (the three
-bundled scripted players plus `villager.md`, an example model soul that is not bundled because certification
-runs without model access), `viewer/` (replay viewer sources), `tools/` (build hook, manifest generator),
-`tests/`, `docs/`.
+bundled scripted players; `souls/examples/` holds nine model souls across Opus, Sonnet, Haiku, Kimi, Sol, Gemini,
+Grok and DeepSeek that are not bundled because certification runs without model access), `viewer/` (replay
+viewer sources), `tools/` (build hook, manifest generator), `tests/`, `docs/`.
 
 Model calls: hosted, the game talks to the platform's LLM sidecar (`AWS_ENDPOINT_URL_BEDROCK_RUNTIME`) with
 OpenAI-style chat completions and an `X-Coworld-Player-Slot` header so spend is billed to the seat; locally it

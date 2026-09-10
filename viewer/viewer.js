@@ -314,6 +314,7 @@
       line.setAttribute("marker-end", "");
       const lx = (a.x + 2 * mx + b.x) / 4, ly = (a.y + 2 * my + b.y) / 4;
       text(lx, ly - 6, `−${p.fish}`, { class: "punish-label show", "text-anchor": "middle" }, punishLayer);
+      text(a.x, a.y + 44, `burned ${p.cost}`, { class: "punish-label show", "text-anchor": "middle", "font-size": 13 }, punishLayer);
     }
   }
 
