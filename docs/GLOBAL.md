@@ -71,5 +71,10 @@ an `llm` block with call and token counts.
 - `?chrome=off` hides the ledger panel and transport for thumbnails. `?t=<seconds>` starts playback there and
   `?paused=1` starts paused, for screenshots.
 - Posts the Coworld readiness messages (`loading`, `phase`, `ready`, `error`) to its parent frame.
-- The painting shows the true stock as a school of fish and a cartouche; both are labelled as hidden from the
-  fishers. Boats travel out in proportion to effort, catches float above them, punishments are terracotta arcs.
+- The painting is a Pattachitra lake (scalloped waves, patterned border) with Madhubani ink fish and
+  miniature-painting busts. It shows the true stock as a school of fish and a cartouche; both are labelled as
+  hidden from the fishers. Boats travel out in proportion to effort, catches float above them, punishments are
+  terracotta arcs.
+- Each of the 16 pseudonyms in `src/overfished/names.py` has a hand-drawn bust; its colour is the seat's identity
+  in the ledger swatch and the warehouse trim. Council speech appears on a palm-leaf folio with the speaker's
+  bust painted at one end; long speeches shrink to fit the leaf.
