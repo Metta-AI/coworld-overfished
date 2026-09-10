@@ -12,6 +12,8 @@ def config(seats: int = 8, **overrides) -> GameConfig:
         "turns": 60,
     }
     base.update(overrides)
+    if isinstance(base["turns"], int):
+        base["turns"] = {"lo": base["turns"], "hi": base["turns"]}
     return GameConfig.model_validate(base)
 
 
@@ -182,3 +184,18 @@ def test_results_shape():
     assert replay["schema"] == "overfished-replay/1"
     assert len(replay["turns"]) == 5
     assert [p["pseudonym"] for p in replay["players"]] == engine.pseudonyms
+
+
+def test_episode_length_is_sampled_and_hidden():
+    from overfished.llm import mechanics_block, turn_observation
+
+    lengths = {Engine(config(turns={"lo": 45, "hi": 75}), seed).turn_limit for seed in range(1, 30)}
+    assert len(lengths) > 5 and all(45 <= n <= 75 for n in lengths)
+    engine = Engine(config(turns={"lo": 45, "hi": 75}), 3)
+    rules = mechanics_block(engine.config, engine.pseudonyms[0], 8, engine.lake.boat_capacity)
+    assert "between 45 and\n75 fishing turns" in rules
+    assert str(engine.turn_limit) not in rules.replace("45", "").replace("75", "")
+    play(engine, [0.3] * 8)
+    assert len(engine.turns) == engine.turn_limit
+    text = turn_observation(Engine(config(turns={"lo": 45, "hi": 75}), 3), 0, "")
+    assert "of 45" not in text and "of 75" not in text and "no more councils" not in text

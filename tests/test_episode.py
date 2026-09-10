@@ -24,6 +24,8 @@ def config_for(souls: list[Path], **overrides) -> GameConfig:
         "commune_every": 3,
     }
     base.update(overrides)
+    if isinstance(base["turns"], int):
+        base["turns"] = {"lo": base["turns"], "hi": base["turns"]}
     return GameConfig.model_validate(base)
 
 

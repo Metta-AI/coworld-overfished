@@ -123,7 +123,8 @@ def mechanics_block(config: GameConfig, pseudonym: str, seat_count: int, boat_ca
     )
     return f"""
 === OVERFISHED: THE RULES ===
-You are {pseudonym}, one of {seat_count} fishers on one lake. The episode lasts {config.turns} fishing turns.
+You are {pseudonym}, one of {seat_count} fishers on one lake. The episode lasts between {int(config.turns.lo)} and
+{int(config.turns.hi)} fishing turns; you will not be told which turn is the last.
 
 SCORE. Your score for this episode is the number of fish you hold when it ends. Your league standing is your
 average score across many episodes, each with a different set of fishers and a different lake. Rank within an
@@ -214,14 +215,13 @@ def _council_transcript(engine: Engine, count: int) -> str:
 
 
 def _next_council(engine: Engine) -> str:
+    """Never consults the turn limit: saying 'no more councils' would reveal when the episode ends."""
     if engine.config.commune_rounds == 0:
         return ""
     played = len(engine.turns)
     every = engine.config.commune_every
     next_before = (played // every + 1) * every + 1
-    if next_before > engine.config.turns:
-        return "There are no more councils before the episode ends."
-    return f"The next council is before turn {next_before}."
+    return f"The next council is before turn {next_before}, if the episode lasts that long."
 
 
 def turn_observation(engine: Engine, slot: int, notebook: str) -> str:
@@ -235,7 +235,7 @@ def turn_observation(engine: Engine, slot: int, notebook: str) -> str:
     )
     return "\n\n".join(
         [
-            f"FISHING TURN {engine.turn} of {config.turns}. You are {name}.\n{own}",
+            f"FISHING TURN {engine.turn}. You are {name}.\n{own}",
             _ledger(engine, config.history_turns),
             _punishments(engine, config.history_turns),
             _own_catches(engine, slot, config.history_turns),

@@ -101,7 +101,13 @@ class GameConfig(BaseModel):
     tokens: list[str] = Field(min_length=2, max_length=16, description="Runner-injected, one per seat.")
     players: list[PlayerName] = Field(min_length=2, max_length=16, description="One display name per seat.")
     seed: int = Field(default=0, ge=0, description="0 means draw a fresh random seed at startup.")
-    turns: int = Field(default=60, ge=1, le=1000)
+    turns: Range = Field(
+        default=Range(lo=45, hi=75),
+        description=(
+            "Episode length in fishing turns, sampled per episode from this closed range. Seats are told the range, "
+            "never the draw, so no turn is known to be the last."
+        ),
+    )
     commune_every: int = Field(default=5, ge=1, description="Hold a council after every N fishing turns.")
     commune_rounds: int = Field(default=2, ge=0, le=6, description="Speaking rounds per council, one fisher at a time; 0 disables talk.")
     commune_at_start: bool = Field(default=True, description="Hold an opening council before turn 1.")

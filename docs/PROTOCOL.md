@@ -54,7 +54,7 @@ overfished run --out runs/try --turns 3 --soul my_soul.md --soul souls/steady.md
 
 ## What the seat is told
 
-Only the mechanics block: score (fish held at the end; league standing is the average across episodes, rank
+Only the mechanics block: the episode length as a range, never the draw; score (fish held at the end; league standing is the average across episodes, rank
 within an episode counts for nothing), the lake (hidden, regrows, has a capacity and a point of no return,
 differs every episode), fishing (effort 0 to 1, the boat's full-lake catch for this episode, catches public,
 efforts private), punishment (the burn ratio, visibility), the council procedure, privacy, and the reply

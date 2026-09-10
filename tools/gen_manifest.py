@@ -68,6 +68,8 @@ def player(id_: str, name: str, description: str) -> dict:
 
 def variant(id_: str, name: str, description: str, **overrides) -> dict:
     count = overrides.pop("seats", 8)
+    if isinstance(overrides.get("turns"), int):
+        overrides["turns"] = {"lo": overrides["turns"], "hi": overrides["turns"]}
     game_config = {"players": seats(count), **overrides}
     return {"id": id_, "name": name, "description": description, "game_config": game_config}
 
@@ -112,20 +114,20 @@ def manifest() -> dict:
             player("enforcer", "Enforcer", "Scripted: 40% effort; burns one fish of up to two fishers whose last catch was 1.5x the median."),
         ],
         "variants": [
-            variant("village", "Village (8 seats, 60 turns)", "The league default: 8 seats, 60 turns, a council before turn 1 and after every 5 turns."),
-            variant("pond", "Pond (4 seats, 30 turns)", "A cheap smoke variant for trying a soul.", seats=4, turns=30),
+            variant("village", "Village (8 seats, 45 to 75 turns)", "The league default: 8 seats, 45 to 75 turns drawn per episode and hidden from the seats, a council before turn 1 and after every 5 turns."),
+            variant("pond", "Pond (4 seats, 20 to 30 turns)", "A cheap smoke variant for trying a soul.", seats=4, turns={"lo": 20, "hi": 30}),
             variant("quiet-lake", "Quiet lake (8 seats, no council)", "Same lake, no talking: only the ledger and punishment carry signal.", commune_rounds=0, commune_at_start=False),
             variant(
                 "long-season",
-                "Long season (8 seats, 200 turns)",
+                "Long season (8 seats, 150 to 250 turns)",
                 "200 turns for local experiments. The manifest asks for a 45 minute hosted deadline; the wall budget cuts thinking, then goes scripted, if models are slow.",
-                turns=200,
+                turns={"lo": 150, "hi": 250},
                 episode_wall_seconds=2400.0,
             ),
         ],
         "certification": {
             "players": [{"player_id": p} for p in ["steady", "greedy", "enforcer", "steady", "steady", "greedy", "enforcer", "steady"]],
-            "game_config": {"players": seats(8), "seed": 7, "turns": 12, "commune_every": 4},
+            "game_config": {"players": seats(8), "seed": 7, "turns": {"lo": 12, "hi": 12}, "commune_every": 4},
         },
     }
 

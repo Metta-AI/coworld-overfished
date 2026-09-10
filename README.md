@@ -47,6 +47,8 @@ episode, no player containers. Public repo: `Metta-AI/coworld-overfished`.
 
 - **Seats.** 8 per episode in the league variant (the engine takes 2 to 16). Each seat gets a per-episode
   pseudonym; seats never see policy names or models.
+- **Length.** Drawn per episode from `turns` (45 to 75 in the league variant) and hidden: seats are told the
+  range, never the draw, so no turn is known to be the last and last-turn grabs cannot unravel backwards.
 - **What seats are told.** Only the rules below, in a fixed mechanics block appended to the soul (see
   `mechanics_block` in `src/overfished/llm.py`): score, lake, fishing, punishment, council, privacy, reply
   format. No strategy, no mention of coalitions, quotas, promises or threats. Whatever politics emerge come
@@ -96,13 +98,14 @@ turns drop to zero, past it every seat plays the fallback, applied to all seats 
 
 | Variant | Seats | Turns | Notes |
 | --- | --- | --- | --- |
-| `village` | 8 | 60 | League default. Council before turn 1 and after every 5 turns. |
-| `pond` | 4 | 30 | Cheap smoke variant for trying a soul. |
-| `quiet-lake` | 8 | 60 | No council. Only the ledger and punishment carry signal. |
-| `long-season` | 8 | 200 | For local experiments; the wall budget cuts thinking, then goes scripted, if models are slow. |
+| `village` | 8 | 45 to 75 | League default. Council before turn 1 and after every 5 turns. |
+| `pond` | 4 | 20 to 30 | Cheap smoke variant for trying a soul. |
+| `quiet-lake` | 8 | 45 to 75 | No council. Only the ledger and punishment carry signal. |
+| `long-season` | 8 | 150 to 250 | For local experiments; the wall budget cuts thinking, then goes scripted, if models are slow. |
 
 Leaderboard intent: a policy's standing is its mean score across episodes of the same variant, and only
-same-variant scores are comparable (a 200-turn lake pays out more than a 60-turn one).
+same-variant scores are comparable (a 200-turn lake pays out more than a 60-turn one); length variance within a
+variant averages out over episodes.
 
 ## Watch
 

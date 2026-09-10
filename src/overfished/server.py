@@ -285,7 +285,7 @@ class Episode:
 
     async def run(self) -> None:
         log(
-            f"episode start: {self.config.num_players} seats, {self.config.turns} turns, seed {self.engine.seed}, "
+            f"episode start: {self.config.num_players} seats, {self.engine.turn_limit} turns (hidden from seats), seed {self.engine.seed}, "
             f"lake capacity {self.engine.lake.capacity:.0f} (hidden from seats), transport "
             f"{self.transport.describe if self.transport else 'none (scripted seats only)'}"
         )

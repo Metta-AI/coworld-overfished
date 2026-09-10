@@ -59,7 +59,7 @@ def run_local(args: argparse.Namespace) -> int:
     base["tokens"] = [secrets.token_urlsafe(12) for _ in souls]
     base["players"] = [PlayerName(name=p.stem).model_dump() for p in souls]
     if args.turns is not None:
-        base["turns"] = args.turns
+        base["turns"] = {"lo": args.turns, "hi": args.turns}
     if args.seed is not None:
         base["seed"] = args.seed
     config = GameConfig.model_validate(base)
@@ -76,7 +76,7 @@ def main() -> int:
     run.add_argument("--soul", action="append", required=True, help="soul file; repeat once per seat")
     run.add_argument("--config", help="token-free game config JSON (a manifest variant's game_config)")
     run.add_argument("--out", required=True, help="artifact directory")
-    run.add_argument("--turns", type=int)
+    run.add_argument("--turns", type=int, help="fix the episode length instead of sampling it")
     run.add_argument("--seed", type=int)
     run.add_argument("--host", default="127.0.0.1")
     run.add_argument("--port", type=int, default=8080)

@@ -55,7 +55,7 @@ def test_extract_json_tolerates_fences_and_prose():
 
 def engine() -> Engine:
     config = GameConfig.model_validate(
-        {"tokens": ["a", "b", "c"], "players": [{"name": "x"}, {"name": "y"}, {"name": "z"}], "seed": 5, "turns": 3}
+        {"tokens": ["a", "b", "c"], "players": [{"name": "x"}, {"name": "y"}, {"name": "z"}], "seed": 5, "turns": {"lo": 3, "hi": 3}}
     )
     return Engine(config, 5)
 

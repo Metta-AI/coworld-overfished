@@ -125,6 +125,7 @@ class Engine:
         self.config = config
         self.seed = seed
         self.lake = sample_lake(config, seed)
+        self.turn_limit = random.Random(f"turns:{seed}").randint(int(config.turns.lo), int(config.turns.hi))
         self.stock = self.lake.initial_stock
         self.pseudonyms = assign_pseudonyms(seed, config.num_players)
         self.fish: list[int] = [0 for _ in range(config.num_players)]
@@ -141,7 +142,7 @@ class Engine:
 
     @property
     def finished(self) -> bool:
-        return len(self.turns) >= self.config.turns
+        return len(self.turns) >= self.turn_limit
 
     def commune_due(self) -> bool:
         """True when a council should be held before the next fishing turn."""
@@ -223,7 +224,8 @@ class Engine:
             "schema": REPLAY_SCHEMA,
             "seed": self.seed,
             "game": {
-                "turns": self.config.turns,
+                "turns": self.turn_limit,
+                "turns_range": [int(self.config.turns.lo), int(self.config.turns.hi)],
                 "commune_every": self.config.commune_every,
                 "commune_rounds": self.config.commune_rounds,
                 "commune_at_start": self.config.commune_at_start,
