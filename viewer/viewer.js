@@ -227,7 +227,6 @@
   let huts = [];
   let boats = [];
   let fishGlyphs = [];
-  let catchLabels = [];
   let punishLayer = null;
   let mandala = null;
   let mandalaText = null;
@@ -494,13 +493,13 @@
       el("use", { href: "#tree", x: -72, y: -142, width: 144, height: 150, transform: `translate(${x} ${y}) scale(${sc})` }, layers.flora);
       keepOut.push({ x0: x - 70 * sc, y0: y - 142 * sc, x1: x + 70 * sc, y1: y - 30 * sc }, { x0: x - 12, y0: y - 60 * sc, x1: x + 12, y1: y + 4 });
     };
-    placeTree(108, 196, 1.15); placeTree(206, 218, 0.8); placeTree(W - 108, 196, 1.15); placeTree(W - 206, 218, 0.8);
-    placeTree(110, H - FRAME - 6, 1.05); placeTree(W - 110, H - FRAME - 6, 1.05);
+    placeTree(108, 196, 1.15); placeTree(140, 218, 0.8); placeTree(W - 108, 196, 1.15); placeTree(W - 140, 218, 0.8);
+    placeTree(100, H - FRAME - 6, 0.85); placeTree(W - 100, H - FRAME - 6, 0.85);
     // animals on the grass, decoration only: two cows on the foot band, a peacock by the left shore
     el("use", { href: "#cow", x: -2, y: -30, width: 64, height: 32, transform: "translate(492 742) scale(1.05)" }, layers.flora);
     el("use", { href: "#cow", x: -2, y: -30, width: 64, height: 32, transform: "translate(706 742) scale(-1.05 1.05)" }, layers.flora);
-    el("use", { href: "#peacock", x: -40, y: -66, width: 80, height: 70, transform: "translate(94 434) scale(0.8)" }, layers.flora);
-    keepOut.push({ x0: 484, y0: 706, x1: 562, y1: 748 }, { x0: 636, y0: 706, x1: 714, y1: 748 }, { x0: 56, y0: 376, x1: 132, y1: 442 });
+    el("use", { href: "#peacock", x: -40, y: -66, width: 80, height: 70, transform: "translate(418 762) scale(0.8)" }, layers.flora);
+    keepOut.push({ x0: 484, y0: 706, x1: 562, y1: 748 }, { x0: 636, y0: 706, x1: 714, y1: 748 }, { x0: 384, y0: 706, x1: 452, y1: 766 });
 
     leafShape(FRAME + 4, H - FRAME - 16, 26, 170); leafShape(W - FRAME - 4, H - FRAME - 16, 154, 170);
 
@@ -607,7 +606,29 @@
     nameSpan.textContent = replay.players[i].pseudonym;
     const tally = el("tspan", { "font-size": 12 }, plaque);
     tally.textContent = " · 0 fish";
-    huts.push({ x: hx, y: hy, ang, glow, tally, color });
+    // per-turn deltas: beside the frame on its outer side for the top and bottom rows; the side seats have no room
+    // there (11px to the border), so theirs go under the plaque as two rows
+    const dg = el("g", { transform: `translate(${hx} ${hy})` }, layers.effects);
+    const bottomRow = hy > CY + SEAT_RY * 0.6;
+    let labels;
+    if (topRow || bottomRow) {
+      const lx = nx + side * 59, anchor = side < 0 ? "end" : "start";
+      labels = {
+        catch: text(lx, ny - 12, "", { class: "catch-label", "text-anchor": anchor }, dg),
+        lost: text(lx, ny + 8, "", { class: "punish-label", "text-anchor": anchor }, dg),
+        burned: text(lx, ny + 24, "", { class: "punish-label burn", "text-anchor": anchor }, dg),
+      };
+    } else {
+      const ly = plaqueY + 23 + 21;
+      labels = {
+        catch: text(nx - 6, ly, "", { class: "catch-label", "text-anchor": "end" }, dg),
+        lost: text(nx + 6, ly, "", { class: "punish-label", "text-anchor": "start" }, dg),
+        burned: text(nx, ly + 17, "", { class: "punish-label burn", "text-anchor": "middle" }, dg),
+      };
+    }
+    huts.push({ x: hx, y: hy, ang, glow, tally, color, labels });
+    if (topRow || bottomRow) keepOut.push({ x0: hx + nx + side * 59 - (side < 0 ? 62 : 0), y0: hy + ny - 32, x1: hx + nx + side * 59 + (side < 0 ? 0 : 62), y1: hy + ny + 28 });
+    else keepOut.push({ x0: hx + nx - 40, y0: hy + plaqueY + 23, x1: hx + nx + 40, y1: hy + plaqueY + 66 });
     keepOut.push({ x0: hx - 42, y0: hy - 66, x1: hx + 42, y1: hy + 18 }, { x0: hx + nx - nw / 2 - 4, y0: hy + ny - nh / 2 - 4, x1: hx + nx + nw / 2 + 4, y1: hy + ny + nh / 2 + 4 }, { x0: hx + gx - 64, y0: hy + plaqueY - 2, x1: hx + gx + 64, y1: hy + plaqueY + 25 });
     // boat: always right side up, mirrored to face the lake; ochre hull, red gunwale, a rower whose turban carries the seat colour
     const home = { x: hx + Math.cos(toward) * 92, y: hy + Math.sin(toward) * 92 };
@@ -622,8 +643,6 @@
     el("path", { d: "M-6.5,-14 A4.5,4.5 0 0 1 2.5,-14 Z", fill: "#f3ecd8", stroke: INK, "stroke-width": 1 }, inner);
     el("line", { x1: 4, y1: -6, x2: 18, y2: -18, stroke: INK, "stroke-width": 1.6, "stroke-linecap": "round" }, inner);
     boats.push({ node: bg, home, ang: toward, out: null });
-    const label = text(home.x, home.y - 30, "", { class: "catch-label", "text-anchor": "middle" }, layers.effects);
-    catchLabels.push(label);
   }
 
   function drawLeaf() {
@@ -714,7 +733,7 @@
       fishGlyphs.push(node);
     }
 
-    huts = []; boats = []; catchLabels = [];
+    huts = []; boats = [];
     seatSpecs.forEach((spec, i) => drawStation(i, spec));
     drawTufts(rng);
     punishLayer = el("g", {}, layers.effects);
@@ -757,8 +776,6 @@
       const x = b.home.x + Math.cos(b.ang) * d;
       const y = b.home.y + Math.sin(b.ang) * d * 0.72;
       b.node.setAttribute("transform", `translate(${x} ${y})`);
-      catchLabels[i].setAttribute("x", x);
-      catchLabels[i].setAttribute("y", y - 26);
     } else {
       b.node.setAttribute("transform", `translate(${b.home.x} ${b.home.y})`);
     }
@@ -792,6 +809,20 @@
     huts.forEach((h, i) => { h.tally.textContent = ` · ${fish[i]} fish`; });
   }
 
+  function renderDeltas(turn, show) {
+    huts.forEach((h, i) => {
+      const lost = turn ? turn.punish.filter((p) => p.to === i).reduce((a, p) => a + p.fish, 0) : 0;
+      const burned = turn ? turn.punish.filter((p) => p.frm === i).reduce((a, p) => a + p.cost, 0) : 0;
+      const caught = turn ? turn.catch[i] : 0;
+      h.labels.catch.textContent = `+${caught}`;
+      h.labels.lost.textContent = `−${lost}`;
+      h.labels.burned.textContent = `burned ${burned}`;
+      h.labels.catch.classList.toggle("show", show && caught > 0);
+      h.labels.lost.classList.toggle("show", show && lost > 0);
+      h.labels.burned.classList.toggle("show", show && burned > 0);
+    });
+  }
+
   function clearPunish() {
     while (punishLayer.firstChild) punishLayer.removeChild(punishLayer.firstChild);
   }
@@ -804,30 +835,21 @@
   function renderPunish(turn, show) {
     clearPunish();
     if (!show) return;
-    const hits = huts.map(() => 0);
     for (const p of turn.punish) {
       const src = huts[p.frm], dst = huts[p.to];
-      const nth = hits[p.to]++;
-      // shaft runs from the source jetty to the target jetty root, bowed to one side; sources stagger the bow, the landing depth and the offset
-      const A = towardLake(src, 70), B0 = towardLake(dst, 44 + (nth % 3) * 16);
-      const dx = B0.x - A.x, dy = B0.y - A.y, len = Math.hypot(dx, dy) || 1;
+      // every arrow at a seat lands on the water just past its jetty end; the bow alone tells the sources apart
+      const A = towardLake(src, 70), B = towardLake(dst, 118);
+      const dx = B.x - A.x, dy = B.y - A.y, len = Math.hypot(dx, dy) || 1;
       const nx = -dy / len, ny = dx / len;
       const bow = ((p.frm + p.to) % 2 ? 1 : -1) * (36 + (p.frm % 4) * 18);
-      const land = ((p.frm % 3) - 1) * 20;
-      const B = { x: B0.x + nx * land, y: B0.y + ny * land };
       const C = { x: (A.x + B.x) / 2 + nx * bow, y: (A.y + B.y) / 2 + ny * bow };
       const at = (t) => ({ x: (1 - t) ** 2 * A.x + 2 * (1 - t) * t * C.x + t * t * B.x, y: (1 - t) ** 2 * A.y + 2 * (1 - t) * t * C.y + t * t * B.y });
       const tan = (t) => { const x = 2 * (1 - t) * (C.x - A.x) + 2 * t * (B.x - C.x), y = 2 * (1 - t) * (C.y - A.y) + 2 * t * (B.y - C.y); const l = Math.hypot(x, y) || 1; return { x: x / l, y: y / l }; };
-      const headLen = 18, tEnd = 1 - headLen / Math.hypot(B.x - A.x, B.y - A.y);
+      const headLen = 18, tEnd = 1 - headLen / len;
       const e = at(tEnd), d = tan(tEnd), deg = (Math.atan2(d.y, d.x) * 180) / Math.PI;
-      const Ce = { x: C.x * tEnd + A.x * (1 - tEnd), y: C.y * tEnd + A.y * (1 - tEnd) }; // control point of the curve truncated at tEnd
+      const Ce = { x: C.x * tEnd + A.x * (1 - tEnd), y: C.y * tEnd + A.y * (1 - tEnd) };
       el("path", { class: "punish-shaft show", d: `M${A.x},${A.y} Q${Ce.x},${Ce.y} ${e.x},${e.y}` }, punishLayer);
       el("path", { class: "punish-head show", d: "M20,0 L-2,-9 L-2,9 Z", transform: `translate(${e.x} ${e.y}) rotate(${deg})` }, punishLayer);
-      // the loss sits beside the shaft just behind the head, stepped back along the shaft for each further hit on the same seat
-      const lp = at(Math.max(0.35, tEnd - (0.14 + nth * 0.1))), ld = tan(tEnd);
-      text(lp.x - ld.y * 18 * Math.sign(bow), lp.y + ld.x * 18 * Math.sign(bow) + 6, `−${p.fish}`, { class: "punish-label show", "text-anchor": "middle" }, punishLayer);
-      const sx = A.x + nx * 16 * Math.sign(bow), sy = A.y + ny * 16 * Math.sign(bow);
-      text(sx, sy + 5, `burned ${p.cost}`, { class: "punish-label burn show", "text-anchor": "middle", "font-size": 13 }, punishLayer);
     }
   }
 
@@ -941,11 +963,7 @@
     }
     const out = p < 0.62;
     boats.forEach((_, i) => setBoat(i, turn.effort[i], out));
-    const showCatch = p > 0.3 && p < 0.9;
-    catchLabels.forEach((label, i) => {
-      label.textContent = `+${turn.catch[i]}`;
-      label.classList.toggle("show", showCatch);
-    });
+    renderDeltas(turn, p > 0.3 && p < 0.9);
     renderPunish(turn, p > 0.45 && p < 0.95);
     const settled = p > 0.5;
     renderFish(settled ? turn.stock_after : turn.stock_before);
@@ -971,7 +989,7 @@
     const turnIndex = commune.before_turn - 1;
     if (fresh) {
       boats.forEach((_, i) => setBoat(i, 0, false));
-      catchLabels.forEach((l) => l.classList.remove("show"));
+      renderDeltas(null, false);
       clearPunish();
       mandala.classList.add("show");
       mandalaText.textContent = `before turn ${commune.before_turn}`;
