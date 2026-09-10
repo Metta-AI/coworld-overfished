@@ -78,3 +78,29 @@ def test_parse_action_rejections():
     assert "target" in parse_action({"effort": 0.5, "punish": [{"target": e.pseudonyms[0]}]}, e, 0)
     assert "target" in parse_action({"effort": 0.5, "punish": [{"target": "Nobody"}]}, e, 0)
     assert "whole" in parse_action({"effort": 0.5, "punish": [{"target": e.pseudonyms[2], "fish": 1.5}]}, e, 0)
+
+
+async def test_transport_reads_json_from_reasoning_when_content_is_empty(monkeypatch):
+    """DeepSeek V4 sometimes returns finish_reason=stop, empty content, and the reply inside `reasoning`."""
+    import json as _json
+    from overfished.llm import Transport
+
+    class FakeResponse:
+        status = 200
+
+        async def text(self):
+            return _json.dumps({"choices": [{"finish_reason": "stop", "message": {"content": "", "reasoning": 'thinking... {"effort": 0.3, "punish": []}'}}], "usage": {}})
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return False
+
+    class FakeSession:
+        def post(self, *args, **kwargs):
+            return FakeResponse()
+
+    transport = Transport(base_url="http://fake", api_key=None, timeout_seconds=1.0, session=FakeSession())
+    text = await transport.complete(model="deepseek/deepseek-v4-pro", messages=[], max_tokens=10, slot=0)
+    assert extract_json(text) == {"effort": 0.3, "punish": []}

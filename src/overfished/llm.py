@@ -79,6 +79,11 @@ class Transport:
         content = message.get("content")
         if isinstance(content, list):
             content = "".join(part.get("text", "") for part in content if isinstance(part, dict))
+        if (not isinstance(content, str) or not content.strip()) and isinstance(message.get("reasoning"), str):
+            # Some reasoning models (DeepSeek V4 via OpenRouter) finish normally with the whole reply in the
+            # reasoning field and an empty content field. The JSON object is still there; use it.
+            if extract_json(message["reasoning"]) is not None:
+                content = message["reasoning"]
         if not isinstance(content, str) or not content.strip():
             finish = choices[0].get("finish_reason")
             reasoning_tokens = ((usage.get("completion_tokens_details") or {}).get("reasoning_tokens")) or 0
