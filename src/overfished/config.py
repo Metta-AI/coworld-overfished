@@ -66,11 +66,19 @@ class LlmConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     think_turns: int = Field(default=1, ge=0, le=6, description="Private reasoning replies allowed before each action.")
-    timeout_seconds: float = Field(default=30.0, gt=0, description="Per model call.")
-    max_output_tokens: int = Field(default=2000, ge=128, le=8192)
+    timeout_seconds: float = Field(default=90.0, gt=0, description="Per model call. Opus-class models need over 30s for a full reply.")
+    max_output_tokens: int = Field(default=4000, ge=128, le=16000, description="Covers hidden reasoning plus the JSON reply for reasoning models.")
     notebook_max_chars: int = Field(default=1500, ge=0, le=8000, description="Private notes carried across turns.")
     say_max_chars: int = Field(default=500, ge=1, le=4000, description="One council message.")
     max_calls_per_decision: int = Field(default=4, ge=1, le=10, description="Hard cap on calls per decision incl. retries.")
+    reasoning: dict[str, object] = Field(
+        default_factory=lambda: {"effort": "low"},
+        description=(
+            "OpenRouter `reasoning` parameter sent with every call. Bounds a reasoning model's hidden thinking so it "
+            "cannot spend the whole output budget before writing its JSON; the seat's visible `thinking` field is "
+            "where deliberation is meant to go. An empty object sends nothing."
+        ),
+    )
 
 
 class GameConfig(BaseModel):

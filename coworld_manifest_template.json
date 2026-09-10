@@ -66,15 +66,16 @@
               "type": "integer"
             },
             "timeout_seconds": {
-              "default": 30.0,
-              "description": "Per model call.",
+              "default": 90.0,
+              "description": "Per model call. Opus-class models need over 30s for a full reply.",
               "exclusiveMinimum": 0,
               "title": "Timeout Seconds",
               "type": "number"
             },
             "max_output_tokens": {
-              "default": 2000,
-              "maximum": 8192,
+              "default": 4000,
+              "description": "Covers hidden reasoning plus the JSON reply for reasoning models.",
+              "maximum": 16000,
               "minimum": 128,
               "title": "Max Output Tokens",
               "type": "integer"
@@ -102,6 +103,12 @@
               "minimum": 1,
               "title": "Max Calls Per Decision",
               "type": "integer"
+            },
+            "reasoning": {
+              "additionalProperties": true,
+              "description": "OpenRouter `reasoning` parameter sent with every call. Bounds a reasoning model's hidden thinking so it cannot spend the whole output budget before writing its JSON; the seat's visible `thinking` field is where deliberation is meant to go. An empty object sends nothing.",
+              "title": "Reasoning",
+              "type": "object"
             }
           },
           "title": "LlmConfig",

@@ -44,7 +44,7 @@ class FakeTransport(Transport):
     def describe(self) -> str:
         return "fake"
 
-    async def complete(self, *, model: str, messages: list[dict], max_tokens: int, slot: int) -> str:
+    async def complete(self, *, model: str, messages: list[dict], max_tokens: int, slot: int, reasoning: dict | None = None) -> str:
         self.calls += 1
         self.slots_seen.add(slot)
         assert model.startswith("anthropic/") or "/" in model

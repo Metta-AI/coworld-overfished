@@ -44,11 +44,15 @@ class Transport:
     def describe(self) -> str:
         return f"{self.base_url}/v1/chat/completions ({'bearer key' if self.api_key else 'sidecar, no auth'})"
 
-    async def complete(self, *, model: str, messages: list[dict], max_tokens: int, slot: int) -> str:
+    async def complete(
+        self, *, model: str, messages: list[dict], max_tokens: int, slot: int, reasoning: dict | None = None
+    ) -> str:
         headers = {"Content-Type": "application/json", PLAYER_SLOT_HEADER: str(slot)}
         if self.api_key:
             headers["Authorization"] = f"Bearer {self.api_key}"
         body = {"model": model, "messages": messages, "max_tokens": max_tokens, "stream": False}
+        if reasoning:
+            body["reasoning"] = reasoning
         self.calls += 1
         try:
             async with self.session.post(
@@ -62,7 +66,7 @@ class Transport:
                     raise LlmError(f"HTTP {response.status} from {self.base_url}: {text[:800]}")
         except (aiohttp.ClientError, asyncio.TimeoutError) as error:
             raise LlmError(f"{type(error).__name__}: {error}") from None
-        payload = json.loads(text)
+        payload = json.loads(text, strict=False)
         if "error" in payload and "choices" not in payload:
             raise LlmError(f"provider error: {json.dumps(payload['error'])[:800]}")
         usage = payload.get("usage") or {}
@@ -71,11 +75,17 @@ class Transport:
         choices = payload["choices"]
         if not choices:
             raise LlmError("provider returned no choices")
-        content = choices[0]["message"]["content"]
+        message = choices[0]["message"]
+        content = message.get("content")
         if isinstance(content, list):
             content = "".join(part.get("text", "") for part in content if isinstance(part, dict))
-        if not isinstance(content, str):
-            raise LlmError("provider returned non-text content")
+        if not isinstance(content, str) or not content.strip():
+            finish = choices[0].get("finish_reason")
+            reasoning_tokens = ((usage.get("completion_tokens_details") or {}).get("reasoning_tokens")) or 0
+            raise LlmError(
+                f"provider returned no text (finish_reason={finish!r}, reasoning_tokens={reasoning_tokens}, "
+                f"completion_tokens={usage.get('completion_tokens')}); raise llm.max_output_tokens if the model reasons before answering"
+            )
         return content
 
 
@@ -381,7 +391,11 @@ async def decide(
         brain.calls += 1
         try:
             reply_text = await transport.complete(
-                model=brain.soul.model, messages=messages, max_tokens=config.max_output_tokens, slot=brain.slot
+                model=brain.soul.model,
+                messages=messages,
+                max_tokens=config.max_output_tokens,
+                slot=brain.slot,
+                reasoning=config.reasoning,
             )
         except LlmError as error:
             brain.failures += 1

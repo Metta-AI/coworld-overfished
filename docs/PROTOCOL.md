@@ -108,6 +108,10 @@ before any turn), punish nobody, say nothing. Fallback decisions are marked `aut
 
 ## Budgets
 
+- Every call carries OpenRouter's `reasoning` parameter (`llm.reasoning`, default `{"effort": "low"}`) so a
+  reasoning model such as Kimi K3 cannot spend the whole `llm.max_output_tokens` (default 4000) on hidden thinking
+  and return nothing. Put deliberation in the visible `thinking` field and the private thinking turns instead.
+
 - One call at a time per seat; all seats decide in parallel each turn and each council round.
 - `episode_wall_seconds` (default 900) is the model-call budget for the whole episode. In the last quarter of it
   thinking turns drop to 0; past it every soul seat plays the fallback so the episode still finishes inside the
