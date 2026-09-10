@@ -129,9 +129,8 @@
     // head in profile, facing left; the miniature convention keeps the eye frontal
     P("M25,13 C22,16 21,21 21,25 C20,28 18,30 16.5,31.5 C17.5,32.6 19.6,32.6 20,33.6 C20,35 19,36 19,37.5 C19,39 20,40 21,40.5 C22,41 23,43 25,44 C29,46 34,46.4 37,44.4 C40,42.4 42,39.4 42,36 L43,26 C44,18 41,11 34,10 C30,9.5 27,10.5 25,13 Z",
       { fill: s.skin, stroke: INK, "stroke-width": 1.1, "stroke-linejoin": "round" });
-    P("M22,26.5 C24.5,23.4 30,23.4 33,26.5 C30,29.6 24.5,29.6 22,26.5 Z", { fill: "#f7efe1", stroke: INK, "stroke-width": 0.8 });
-    C(26.6, 26.7, 1.9, { fill: INK });
-    P("M21,26.2 L34.6,26.9", line(0.7));
+    P("M21.5,26.5 C24.5,23.2 30.5,23.2 34,26.5 C30.5,29.8 24.5,29.8 21.5,26.5 Z", { fill: "#f7efe1", stroke: INK, "stroke-width": 0.9 });
+    C(26.8, 26.6, 2.1, { fill: INK });
     P("M21.5,22.4 C25,20.4 30.5,20.4 34.2,22.6", line(1.1));
     P("M18.4,32.3 l1.6,0", line(0.7));
     P("M18.8,36.7 C19.8,36 20.9,36 21.7,36.7", { fill: "none", stroke: "#b3402e", "stroke-width": 1.2, "stroke-linecap": "round" });
@@ -335,6 +334,8 @@
     const edgeY = el("linearGradient", { id: "leaf-edge-y", x1: 0, x2: 0, y1: 0, y2: 1 }, defs);
     for (const [o, a] of [[0, 0.5], [0.12, 0.08], [0.3, 0], [0.7, 0], [0.88, 0.08], [1, 0.5]]) el("stop", { offset: o, "stop-color": "#4a2e12", "stop-opacity": a }, edgeY);
 
+    drawCreatureSymbols(defs);
+
     // busts, one symbol per seat
     seatSpecs = replay.players.map((p, i) => AVATARS[p.pseudonym] || AVATAR_LIST[i % AVATAR_LIST.length]);
     seatSpecs.forEach((s, i) => drawBust(defs, `av-${i}`, s));
@@ -343,6 +344,98 @@
     el("rect", { x: FRAME, y: FRAME, width: W - 2 * FRAME, height: H - 2 * FRAME }, clip);
     const lakeClip = el("clipPath", { id: "lake-clip" }, defs);
     el("ellipse", { cx: CX, cy: CY, rx: LAKE_RX, ry: LAKE_RY }, lakeClip);
+  }
+
+  function drawCreatureSymbols(defs) {
+    const rng = mulberry32(7);
+    const PALE = "#e8e4da", SAGE = "#7f9d57", SAGE_DARK = "#54713f", TIP = "#d9e4a6";
+    // tree: pale branching trunk, broad canopy of tiny leaf clusters, hanging tendrils, two birds
+    const tree = el("symbol", { id: "tree", viewBox: "-72 -142 144 150", overflow: "visible" }, defs);
+    let canopy = "";
+    for (let a = 0; a < 360; a += 15) {
+      const r1 = (a * Math.PI) / 180, r2 = ((a + 7.5) * Math.PI) / 180, r3 = ((a + 15) * Math.PI) / 180;
+      const p1 = [Math.cos(r1) * 60, -86 + Math.sin(r1) * 44], p2 = [Math.cos(r2) * 66, -86 + Math.sin(r2) * 50], p3 = [Math.cos(r3) * 60, -86 + Math.sin(r3) * 44];
+      canopy += (a === 0 ? `M${p1[0]},${p1[1]} ` : "") + `Q${p2[0]},${p2[1]} ${p3[0]},${p3[1]} `;
+    }
+    el("path", { d: canopy + "Z", fill: SAGE_DARK, stroke: INK, "stroke-width": 1.8, "stroke-linejoin": "round" }, tree);
+    el("path", { d: "M-8,0 C-6,-22 -4,-42 -3,-60 L3,-60 C4,-42 6,-22 8,0 Z", fill: PALE, stroke: INK, "stroke-width": 1.2 }, tree);
+    const limb = (x0, y0, x1, y1, w0, w1) => {
+      const dx = x1 - x0, dy = y1 - y0, l = Math.hypot(dx, dy), nx = -dy / l, ny = dx / l;
+      el("path", { d: `M${x0 + nx * w0},${y0 + ny * w0} L${x1 + nx * w1},${y1 + ny * w1} L${x1 - nx * w1},${y1 - ny * w1} L${x0 - nx * w0},${y0 - ny * w0} Z`, fill: PALE, stroke: INK, "stroke-width": 0.9, "stroke-linejoin": "round" }, tree);
+    };
+    limb(0, -58, -34, -96, 3, 1); limb(0, -58, 30, -100, 3, 1); limb(0, -58, -8, -118, 2.6, 0.8);
+    limb(-20, -80, -50, -92, 1.6, 0.6); limb(18, -84, 52, -90, 1.6, 0.6); limb(-4, -100, -28, -122, 1.4, 0.5); limb(14, -88, 36, -118, 1.4, 0.5);
+    for (let i = 0; i < 96; i++) {
+      const a = rng() * Math.PI * 2, r = Math.sqrt(rng());
+      const cx = Math.cos(a) * r * 58, cy = -86 + Math.sin(a) * r * 42;
+      const g = el("g", { transform: `translate(${cx.toFixed(1)} ${cy.toFixed(1)}) rotate(${Math.round(rng() * 360)})` }, tree);
+      for (let k = 0; k < 6; k++) {
+        el("path", { d: "M0,0 q2.2,-2.6 0,-8 q-2.2,5.4 0,8 Z", fill: SAGE, stroke: INK, "stroke-width": 0.35, transform: `rotate(${k * 60})` }, g);
+        el("path", { d: "M0,-4.2 L0,-7.4", stroke: TIP, "stroke-width": 0.9, transform: `rotate(${k * 60})` }, g);
+      }
+    }
+    for (const [tx, ty] of [[-40, -52], [-18, -46], [8, -48], [30, -50], [48, -58]]) {
+      const g = el("g", { transform: `translate(${tx} ${ty})` }, tree);
+      el("path", { d: "M0,0 C2,8 -2,16 1,26", fill: "none", stroke: SAGE_DARK, "stroke-width": 1 }, g);
+      for (let k = 1; k <= 4; k++) el("path", { d: "M0,0 q3,-1 5,2 q-3,1 -5,-2 Z", fill: SAGE, stroke: INK, "stroke-width": 0.3, transform: `translate(${k % 2 ? 1 : -1} ${k * 6}) scale(${k % 2 ? 1 : -1} 1)` }, g);
+    }
+    for (const [bx, by, f] of [[-26, -104, 1], [24, -70, -1]]) {
+      const g = el("g", { transform: `translate(${bx} ${by}) scale(${f} 1)` }, tree);
+      el("path", { d: "M0,0 c2,-3.5 7,-3.5 9,0 c-2,2 -7,2 -9,0 Z", fill: PALE, stroke: INK, "stroke-width": 0.7 }, g);
+      el("path", { d: "M9,-0.5 l4,-2.5 l-3,3 M0,0 l-4,1.5", fill: "none", stroke: INK, "stroke-width": 0.7 }, g);
+      el("circle", { cx: 10.5, cy: -1.6, r: 1.6, fill: PALE, stroke: INK, "stroke-width": 0.6 }, g);
+    }
+    // grass tuft with a lotus bud
+    const tuft = el("symbol", { id: "tuft", viewBox: "-8 -15 16 16", overflow: "visible" }, defs);
+    el("path", { d: "M0,0 L-6,-8 M0,0 L-3,-11 M0,0 L0,-13 M0,0 L3,-11 M0,0 L6,-8", fill: "none", stroke: "#3d6b38", "stroke-width": 1.2, "stroke-linecap": "round" }, tuft);
+    el("path", { d: "M-6,-8 l-1,-1.5 M-3,-11 l-0.5,-2 M3,-11 l0.5,-2 M6,-8 l1,-1.5", fill: "none", stroke: TIP, "stroke-width": 1, "stroke-linecap": "round" }, tuft);
+    const bud = el("symbol", { id: "tuft-bud", viewBox: "-8 -15 16 16", overflow: "visible" }, defs);
+    el("use", { href: "#tuft" }, bud);
+    el("path", { d: "M0,-8 C-3,-11 -2.5,-16 0,-18 C2.5,-16 3,-11 0,-8 Z", fill: "#e58aa8", stroke: INK, "stroke-width": 0.6 }, bud);
+    // white cow, in profile facing left: gold harness, red spots and hoof marks
+    const cow = el("symbol", { id: "cow", viewBox: "-2 -30 64 32", overflow: "visible" }, defs);
+    const WHITE = "#f4efe4";
+    for (const [lx, ly] of [[14, -8], [22, -8], [42, -8], [50, -8]]) {
+      el("path", { d: `M${lx},${ly} L${lx - 1},0 L${lx + 4},0 L${lx + 3.5},${ly} Z`, fill: WHITE, stroke: INK, "stroke-width": 0.9 }, cow);
+      el("path", { d: `M${lx - 1},0 L${lx + 4},0`, stroke: RED, "stroke-width": 2 }, cow);
+    }
+    el("path", { d: "M10,-8 C8,-16 12,-22 22,-22 L46,-22 C54,-22 56,-16 55,-8 C54,-4 50,-4 48,-6 L14,-6 C11,-5 10,-6 10,-8 Z", fill: WHITE, stroke: INK, "stroke-width": 1 }, cow);
+    el("path", { d: "M55,-20 C58,-14 57,-8 55,-2 M55,-2 c-1,1 -2,1 -3,0", fill: "none", stroke: INK, "stroke-width": 1 }, cow);
+    el("path", { d: "M12,-20 C8,-24 6,-26 4,-26 C0,-26 -1,-22 0,-18 C1,-15 4,-13 8,-13 L12,-16 Z", fill: WHITE, stroke: INK, "stroke-width": 1 }, cow);
+    el("path", { d: "M4,-26 c-2,-3 -3,-6 -2,-8 M7,-26 c0,-3 2,-6 4,-7", fill: "none", stroke: INK, "stroke-width": 1, "stroke-linecap": "round" }, cow);
+    el("path", { d: "M9,-25 c3,-1 5,0 6,1 c-2,1 -4,1 -6,-1 Z", fill: WHITE, stroke: INK, "stroke-width": 0.7 }, cow);
+    el("circle", { cx: 5, cy: -21.5, r: 1.1, fill: INK }, cow);
+    el("circle", { cx: 2, cy: -17, r: 1, fill: RED }, cow);
+    el("path", { d: "M12,-21 C11,-17 12,-14 13,-12", fill: "none", stroke: GOLD, "stroke-width": 2 }, cow);
+    el("path", { d: "M22,-22 L44,-22 L44,-16 L22,-16 Z", fill: "#e39a2f", stroke: INK, "stroke-width": 0.8 }, cow);
+    el("path", { d: "M22,-19 L44,-19", stroke: RED, "stroke-width": 1, "stroke-dasharray": "2 1.5" }, cow);
+    for (const [sx, sy] of [[18, -12], [30, -11], [38, -13], [48, -11], [26, -8], [44, -8]]) el("circle", { cx: sx, cy: sy, r: 1.3, fill: RED }, cow);
+    // peacock with the tail fanned: concentric blue-green feathers with eye spots
+    const pea = el("symbol", { id: "peacock", viewBox: "-40 -66 80 70", overflow: "visible" }, defs);
+    for (const [r, col] of [[36, "#2f6f5f"], [30, "#3f8f72"], [24, "#2f6f5f"], [18, "#3f8f72"]]) {
+      el("path", { d: `M${-r},-24 A${r},${r} 0 1 1 ${r},-24 Z`, fill: col, stroke: INK, "stroke-width": 1 }, pea);
+    }
+    for (const [r, count] of [[33, 9], [27, 7], [21, 5]]) {
+      for (let k = 0; k < count; k++) {
+        const a = Math.PI + (Math.PI * (k + 0.5)) / count;
+        const ex = Math.cos(a) * r, ey = -24 + Math.sin(a) * r;
+        el("circle", { cx: ex, cy: ey, r: 2.6, fill: "#1f3f78", stroke: GOLD, "stroke-width": 0.9 }, pea);
+        el("circle", { cx: ex, cy: ey, r: 0.9, fill: "#e0662a" }, pea);
+      }
+    }
+    for (let k = 0; k < 13; k++) {
+      const a = Math.PI + (Math.PI * (k + 0.5)) / 13;
+      el("path", { d: `M0,-24 L${Math.cos(a) * 36},${-24 + Math.sin(a) * 36}`, stroke: INK, "stroke-width": 0.45, opacity: 0.6 }, pea);
+    }
+    el("path", { d: "M-8,-6 C-12,-16 -6,-26 2,-26 C10,-26 12,-16 8,-6 Z", fill: "#2b4c8c", stroke: INK, "stroke-width": 1 }, pea);
+    el("path", { d: "M-2,-24 C-6,-30 -6,-38 -8,-44 C-9,-47 -12,-48 -14,-46", fill: "none", stroke: "#2b4c8c", "stroke-width": 4, "stroke-linecap": "round" }, pea);
+    el("path", { d: "M-2,-24 C-6,-30 -6,-38 -8,-44 C-9,-47 -12,-48 -14,-46", fill: "none", stroke: INK, "stroke-width": 5.4, "stroke-linecap": "round" }, pea);
+    el("path", { d: "M-2,-24 C-6,-30 -6,-38 -8,-44 C-9,-47 -12,-48 -14,-46", fill: "none", stroke: "#2b4c8c", "stroke-width": 3.6, "stroke-linecap": "round" }, pea);
+    el("path", { d: "M-14,-46 l-5,1.5", stroke: "#e0662a", "stroke-width": 1.6, "stroke-linecap": "round" }, pea);
+    for (const [cx, cy] of [[-13, -52], [-10, -54], [-7, -52]]) el("circle", { cx, cy, r: 1.1, fill: "#3f8f72", stroke: INK, "stroke-width": 0.4 }, pea);
+    el("path", { d: "M-12,-49 L-13,-52 M-10,-49 L-10,-54 M-8,-49 L-7,-52", stroke: INK, "stroke-width": 0.5 }, pea);
+    el("circle", { cx: -12, cy: -46.5, r: 0.7, fill: "#f4efe4" }, pea);
+    el("path", { d: "M-4,-6 L-5,2 M4,-6 L5,2 M-5,2 l-3,1 M-5,2 l3,1 M5,2 l-3,1 M5,2 l3,1", fill: "none", stroke: INK, "stroke-width": 1, "stroke-linecap": "round" }, pea);
   }
 
   function drawLand(scene) {
@@ -393,27 +486,24 @@
       }
       el("path", { d: `M${len * 0.15},-${len * 0.02} C${len * 0.4},-${len * 0.14} ${len * 0.7},-${len * 0.16} ${len * 0.9},-${len * 0.08}`, stroke: "#8fd08a", "stroke-width": 1.2, fill: "none", opacity: 0.7 }, g);
     };
-    // tree clumps: overlapping crowns of scalloped foliage on a short trunk
-    const tree = (x, y, size, seed) => {
-      const tr = mulberry32(seed);
-      const g = el("g", { transform: `translate(${x} ${y})` }, layers.flora);
-      el("path", { d: `M-4,0 L-3,-${size * 0.5} L3,-${size * 0.5} L4,0 Z`, fill: "#6b4423", stroke: INK, "stroke-width": 1.2 }, g);
-      const crowns = [[0, -size * 0.75, size * 0.42]];
-      for (let i = 0; i < 6; i++) {
-        const a = (i / 6) * Math.PI * 2 + tr() * 0.6;
-        crowns.push([Math.cos(a) * size * 0.34, -size * 0.75 + Math.sin(a) * size * 0.26, size * (0.22 + tr() * 0.14)]);
+    // trees, one symbol at varying scale; the top pair stands on the hills, the bottom pair on the bank
+    const placeTree = (x, y, sc) => el("use", { href: "#tree", x: -72, y: -142, width: 144, height: 150, transform: `translate(${x} ${y}) scale(${sc})` }, layers.flora);
+    placeTree(108, 196, 1.15); placeTree(206, 218, 0.8); placeTree(W - 108, 196, 1.15); placeTree(W - 206, 218, 0.8);
+    placeTree(110, H - FRAME - 6, 1.05); placeTree(W - 110, H - FRAME - 6, 1.05);
+    // grass and lotus-bud tufts: a band along the foot of the painting, a row under the sky, and by the four shore points
+    const placeTuft = (x, y, sc, budded) => el("use", { href: budded ? "#tuft-bud" : "#tuft", x: -8, y: -15, width: 16, height: 16, transform: `translate(${x} ${y}) scale(${sc})` }, layers.flora);
+    for (let x = 200; x <= W - 200; x += 34) placeTuft(x + (rng() - 0.5) * 8, H - FRAME - 6, 1 + rng() * 0.4, x % 3 === 0);
+    for (let x = 470; x <= 730; x += 30) placeTuft(x, SKY_BOTTOM + 15, 0.9, x % 2 === 0);
+    for (const [ax, ay] of [[0, 1], [0, -1]]) {
+      for (const off of [-13, 0, 13]) {
+        const a = Math.atan2(ay, ax) + (off * Math.PI) / 180;
+        placeTuft(CX + Math.cos(a) * (SEAT_RX + 36), CY + Math.sin(a) * (SEAT_RY + 34), 1, off === 0);
       }
-      const id = `tree-${seed}`;
-      const clip = el("clipPath", { id }, svg.querySelector("defs"));
-      for (const [cx, cy, r] of crowns) el("circle", { cx: x + cx, cy: y + cy, r }, clip);
-      for (const [cx, cy, r] of crowns) el("circle", { cx, cy, r, fill: TREE, stroke: INK, "stroke-width": 2.6 }, g);
-      for (const [cx, cy, r] of crowns) el("circle", { cx, cy, r, fill: TREE }, g);
-      const fol = el("g", { "clip-path": `url(#${id})`, transform: `translate(${-x} ${-y})` }, g);
-      el("rect", { x: x - size, y: y - size * 1.3, width: size * 2, height: size * 1.4, fill: "url(#tree-scallops)" }, fol);
-    };
-    tree(120, SKY_BOTTOM + 72, 120, 1); tree(212, SKY_BOTTOM + 96, 88, 2);
-    tree(W - 120, SKY_BOTTOM + 72, 120, 3); tree(W - 212, SKY_BOTTOM + 96, 88, 4);
-    tree(112, H - FRAME - 16, 118, 5); tree(W - 112, H - FRAME - 16, 118, 6);
+    }
+    // animals on the grass, decoration only: two cows on the foot band, a peacock by the left shore
+    el("use", { href: "#cow", x: -2, y: -30, width: 64, height: 32, transform: "translate(492 742) scale(1.05)" }, layers.flora);
+    el("use", { href: "#cow", x: -2, y: -30, width: 64, height: 32, transform: "translate(706 742) scale(-1.05 1.05)" }, layers.flora);
+    el("use", { href: "#peacock", x: -40, y: -66, width: 80, height: 70, transform: "translate(94 434) scale(0.8)" }, layers.flora);
     leafShape(FRAME + 4, H - FRAME - 16, 26, 170); leafShape(W - FRAME - 4, H - FRAME - 16, 154, 170);
 
     // lotus pads on the water margin between the seats
@@ -506,12 +596,12 @@
     const facing = home.x < CX ? 1 : -1;
     const bg = el("g", { class: "boat", transform: `translate(${home.x} ${home.y})` }, layers.boats);
     const inner = el("g", { transform: `scale(${facing} 1)` }, bg);
-    el("path", { d: "M-26,0 Q0,17 26,0 Q0,6 -26,0 Z", fill: "#b5742f", stroke: INK, "stroke-width": 1.5, "stroke-linejoin": "round" }, inner);
-    el("path", { d: "M-22,1 Q0,6 22,1", fill: "none", stroke: RED, "stroke-width": 2 }, inner);
+    el("path", { d: "M-26,0 Q0,17 26,0 Q0,6 -26,0 Z", fill: color, stroke: INK, "stroke-width": 1.5, "stroke-linejoin": "round" }, inner);
+    el("path", { d: "M-22,1.5 Q0,6.5 22,1.5", fill: "none", stroke: "#f6e7b2", "stroke-width": 1.6 }, inner);
     el("path", { d: "M26,0 q6,-8 3,-16", fill: "none", stroke: INK, "stroke-width": 2.2, "stroke-linecap": "round" }, inner);
     el("path", { d: "M-8,-3 L-6,-10 L2,-10 L4,-3 Z", fill: CREAM, stroke: INK, "stroke-width": 1 }, inner);
     el("circle", { cx: -2, cy: -13, r: 4, fill: "#d9a06b", stroke: INK, "stroke-width": 1 }, inner);
-    el("path", { d: "M-6.5,-14 A4.5,4.5 0 0 1 2.5,-14 Z", fill: color, stroke: INK, "stroke-width": 1 }, inner);
+    el("path", { d: "M-6.5,-14 A4.5,4.5 0 0 1 2.5,-14 Z", fill: "#f3ecd8", stroke: INK, "stroke-width": 1 }, inner);
     el("line", { x1: 4, y1: -6, x2: 18, y2: -18, stroke: INK, "stroke-width": 1.6, "stroke-linecap": "round" }, inner);
     boats.push({ node: bg, home, ang: toward, out: null });
     const label = text(home.x, home.y - 30, "", { class: "catch-label", "text-anchor": "middle" }, layers.effects);
@@ -681,18 +771,45 @@
     while (punishLayer.firstChild) punishLayer.removeChild(punishLayer.firstChild);
   }
 
+  function towardLake(h, dist) {
+    const a = Math.atan2(CY - h.y, CX - h.x);
+    return { x: h.x + Math.cos(a) * dist, y: h.y + Math.sin(a) * dist };
+  }
+
   function renderPunish(turn, show) {
     clearPunish();
     if (!show) return;
+    const hits = huts.map(() => 0);
     for (const p of turn.punish) {
-      const a = huts[p.frm], b = huts[p.to];
-      const mx = (a.x + b.x) / 2 + (CY - (a.y + b.y) / 2) * 0.25;
-      const my = (a.y + b.y) / 2 + (CX - (a.x + b.x) / 2) * -0.25;
-      el("path", { class: "punish-line show", d: `M${a.x},${a.y} Q${mx},${my} ${b.x},${b.y}` }, punishLayer);
-      const lx = (a.x + 2 * mx + b.x) / 4, ly = (a.y + 2 * my + b.y) / 4;
-      text(lx, ly - 6, `−${p.fish}`, { class: "punish-label show", "text-anchor": "middle" }, punishLayer);
-      const toward = Math.atan2(CY - a.y, CX - a.x);
-      text(a.x + Math.cos(toward) * 132, a.y + Math.sin(toward) * 132 + 5, `burned ${p.cost}`, { class: "punish-label show", "text-anchor": "middle", "font-size": 13 }, punishLayer);
+      const src = huts[p.frm], dst = huts[p.to];
+      const nth = hits[p.to]++;
+      // shaft runs from the source jetty to the target jetty root, bowed to one side; sources stagger the bow, the landing depth and the offset
+      const A = towardLake(src, 70), B0 = towardLake(dst, 44 + (nth % 3) * 16);
+      const dx = B0.x - A.x, dy = B0.y - A.y, len = Math.hypot(dx, dy) || 1;
+      const nx = -dy / len, ny = dx / len;
+      const bow = ((p.frm + p.to) % 2 ? 1 : -1) * (36 + (p.frm % 4) * 18);
+      const land = ((p.frm % 3) - 1) * 20;
+      const B = { x: B0.x + nx * land, y: B0.y + ny * land };
+      const C = { x: (A.x + B.x) / 2 + nx * bow, y: (A.y + B.y) / 2 + ny * bow };
+      const at = (t) => ({ x: (1 - t) ** 2 * A.x + 2 * (1 - t) * t * C.x + t * t * B.x, y: (1 - t) ** 2 * A.y + 2 * (1 - t) * t * C.y + t * t * B.y });
+      const tan = (t) => { const x = 2 * (1 - t) * (C.x - A.x) + 2 * t * (B.x - C.x), y = 2 * (1 - t) * (C.y - A.y) + 2 * t * (B.y - C.y); const l = Math.hypot(x, y) || 1; return { x: x / l, y: y / l }; };
+      const headLen = 24, tEnd = 1 - headLen / Math.hypot(B.x - A.x, B.y - A.y);
+      const left = [], right = [];
+      for (let i = 0; i <= 24; i++) {
+        const t = (i / 24) * tEnd;
+        const q = at(t), d = tan(t), w = 1.2 + 4.6 * t;
+        left.push(`${(q.x - d.y * w).toFixed(1)},${(q.y + d.x * w).toFixed(1)}`);
+        right.push(`${(q.x + d.y * w).toFixed(1)},${(q.y - d.x * w).toFixed(1)}`);
+      }
+      const shaft = `M${left.join(" L")} L${right.reverse().join(" L")} Z`;
+      el("path", { class: "punish-shaft show", d: shaft }, punishLayer);
+      const e = at(tEnd), d = tan(tEnd), deg = (Math.atan2(d.y, d.x) * 180) / Math.PI;
+      el("path", { class: "punish-head show", d: "M24,0 L-2,-11 L5,0 L-2,11 Z M-2,-4 L-6,-12 M-2,4 L-6,12", transform: `translate(${e.x} ${e.y}) rotate(${deg})` }, punishLayer);
+      // the loss sits beside the shaft just behind the head, stepped back along the shaft for each further hit on the same seat
+      const lp = at(Math.max(0.35, tEnd - (0.14 + nth * 0.1))), ld = tan(tEnd);
+      text(lp.x - ld.y * 18 * Math.sign(bow), lp.y + ld.x * 18 * Math.sign(bow) + 6, `−${p.fish}`, { class: "punish-label show", "text-anchor": "middle" }, punishLayer);
+      const sx = A.x + nx * 16 * Math.sign(bow), sy = A.y + ny * 16 * Math.sign(bow);
+      text(sx, sy + 5, `burned ${p.cost}`, { class: "punish-label show", "text-anchor": "middle", "font-size": 13 }, punishLayer);
     }
   }
 
