@@ -105,9 +105,9 @@ td .hit { color: var(--ink-terracotta); font-family: var(--mono); font-size: 11p
 .boat { transition: transform 1.2s cubic-bezier(0.4, 0, 0.2, 1); }
 .catch-label { font: 700 20px var(--serif); fill: #f6e7b2; paint-order: stroke; stroke: #2b1a10; stroke-width: 4px; opacity: 0; transition: opacity 0.4s ease; }
 .catch-label.show { opacity: 1; }
-.punish-shaft { fill: #7a1f1f; stroke: #2b1a10; stroke-width: 0.9; stroke-linejoin: round; opacity: 0; transition: opacity 0.3s ease; }
+.punish-shaft { fill: none; stroke: #7a1f1f; stroke-width: 4; stroke-linecap: round; opacity: 0; transition: opacity 0.3s ease; }
 .punish-shaft.show { opacity: 1; }
-.punish-head { fill: #7a1f1f; stroke: #2b1a10; stroke-width: 1.1; stroke-linejoin: round; stroke-linecap: round; opacity: 0; transition: opacity 0.3s ease; }
+.punish-head { fill: #7a1f1f; stroke: #7a1f1f; stroke-width: 1; stroke-linejoin: round; opacity: 0; transition: opacity 0.3s ease; }
 .punish-head.show { opacity: 1; }
 .punish-label { font: 700 18px var(--serif); fill: #ffd9c7; paint-order: stroke; stroke: #2b1a10; stroke-width: 4px; opacity: 0; transition: opacity 0.3s ease; }
 .punish-label.show { opacity: 1; }

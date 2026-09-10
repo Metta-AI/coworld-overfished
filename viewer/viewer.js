@@ -85,6 +85,8 @@
   const WATER_SCALE = "#24488a";
   const CREST = "rgba(214,226,240,0.42)";
   const IVORY = "#f7eed6";
+  const FISH_GOLD = "#e8b73a"; // marigold school, a third of it red-ochre
+  const FISH_RED = "#c8442a";
 
   // ---------------------------------------------------------------- avatars: miniature-painting busts
 
@@ -264,7 +266,7 @@
     const stripes = el("pattern", { id: "cloth-stripes", width: 4, height: 4, patternUnits: "userSpaceOnUse", patternTransform: "rotate(35)" }, defs);
     el("rect", { x: 0, y: 0, width: 1.1, height: 4, fill: "#f7efe1", opacity: 0.55 }, stripes);
 
-    // Madhubani fish: one ink, cross-hatched bands, curling fins, ringed eye
+    // Madhubani fish: one ink, cross-hatched bands, curling fins, ringed eye; body colour comes from the glyph
     const hatch = el("pattern", { id: "fish-hatch", width: 2.4, height: 2.4, patternUnits: "userSpaceOnUse", patternTransform: "rotate(45)" }, defs);
     el("rect", { x: 0, y: 0, width: 0.55, height: 2.4, fill: INK }, hatch);
     el("rect", { x: 0, y: 0, width: 2.4, height: 0.55, fill: INK }, hatch);
@@ -284,10 +286,10 @@
     el("path", { d: "M21,-7 C22,-11.5 27,-12 28,-9 C28.4,-7.4 26.4,-7.2 26.6,-8.6", finInk }, fish);
     el("path", { d: "M21,7 C22,11.5 27,12 28,9 C28.4,7.4 26.4,7.2 26.6,8.6", finInk }, fish);
     // tail: forked, tips curling inward
-    el("path", { d: "M33,0 C37,-5 41,-10 47,-11 C45,-7.5 42,-4 39.5,-1 C40,0 40,0 39.5,1 C42,4 45,7.5 47,11 C41,10 37,5 33,0 Z", fill: IVORY, stroke: INK, "stroke-width": 1.2, "stroke-linejoin": "round" }, fish);
+    el("path", { d: "M33,0 C37,-5 41,-10 47,-11 C45,-7.5 42,-4 39.5,-1 C40,0 40,0 39.5,1 C42,4 45,7.5 47,11 C41,10 37,5 33,0 Z", fill: "currentColor", stroke: INK, "stroke-width": 1.2, "stroke-linejoin": "round" }, fish);
     el("path", { d: "M35,-1 L43,-8 M36,0 L40,-3 M35,1 L43,8 M36,0 L40,3", fill: "none", stroke: INK, "stroke-width": 0.55 }, fish);
     el("path", { d: "M46.4,-10.6 c1.6,-0.4 2.6,1 1.4,2.2 M46.4,10.6 c1.6,0.4 2.6,-1 1.4,-2.2", finInk }, fish);
-    el("path", { d: body, fill: IVORY, stroke: INK, "stroke-width": 1.5 }, fish);
+    el("path", { d: body, fill: "currentColor", stroke: INK, "stroke-width": 1.5 }, fish);
     const inner = el("g", { "clip-path": "url(#fish-body)" }, fish);
     el("rect", { x: 0, y: -10, width: 9.5, height: 20, fill: "url(#fish-vhatch)", opacity: 0.55 }, inner);
     el("rect", { x: 11.5, y: -10, width: 8, height: 20, fill: "url(#fish-scales)", opacity: 0.85 }, inner);
@@ -580,8 +582,8 @@
     el("rect", { x: nx - nw / 2 + 6, y: ny - nh / 2 + 6, width: nw - 12, height: nh - 12, fill: "none", stroke: GOLD, "stroke-width": 1 }, g);
     el("use", { href: `#av-${i}`, x: nx - 43, y: ny - 51.5, width: 86, height: 103 }, g);
     el("rect", { x: nx - 43, y: ny - 51.5, width: 86, height: 103, fill: "none", stroke: INK, "stroke-width": 1.2 }, g);
-    // plaque: name and tally on one line, beyond the portrait, centred on the pavilion-and-portrait group
-    const gx = side * 55;
+    // plaque: name and tally on one line, beyond the portrait and centred on it
+    const gx = nx;
     const plaqueY = topRow ? ny - nh / 2 - 27 : ny + nh / 2 + 5;
     el("rect", { x: gx - 62, y: plaqueY, width: 124, height: 23, rx: 3, fill: "#7a1f1f", stroke: GOLD, "stroke-width": 1.6 }, g);
     el("rect", { x: gx - 59, y: plaqueY + 3, width: 118, height: 17, rx: 2, fill: "none", stroke: INK, "stroke-width": 0.8 }, g);
@@ -691,7 +693,7 @@
       const y = CY + Math.sin(a) * r * 190;
       const dir = rng() < 0.5 ? -1 : 1;
       const size = 40 + rng() * 20;
-      const node = el("use", { href: "#fish", x: -size / 2, y: -size * 0.23, width: size, height: size * 0.46, transform: `translate(${x} ${y}) scale(${dir} 1) rotate(${(rng() - 0.5) * 30})` }, layers.fish);
+      const node = el("use", { href: "#fish", x: -size / 2, y: -size * 0.23, width: size, height: size * 0.46, color: rng() < 0.34 ? FISH_RED : FISH_GOLD, transform: `translate(${x} ${y}) scale(${dir} 1) rotate(${(rng() - 0.5) * 30})` }, layers.fish);
       fishGlyphs.push(node);
     }
 
@@ -793,18 +795,11 @@
       const C = { x: (A.x + B.x) / 2 + nx * bow, y: (A.y + B.y) / 2 + ny * bow };
       const at = (t) => ({ x: (1 - t) ** 2 * A.x + 2 * (1 - t) * t * C.x + t * t * B.x, y: (1 - t) ** 2 * A.y + 2 * (1 - t) * t * C.y + t * t * B.y });
       const tan = (t) => { const x = 2 * (1 - t) * (C.x - A.x) + 2 * t * (B.x - C.x), y = 2 * (1 - t) * (C.y - A.y) + 2 * t * (B.y - C.y); const l = Math.hypot(x, y) || 1; return { x: x / l, y: y / l }; };
-      const headLen = 24, tEnd = 1 - headLen / Math.hypot(B.x - A.x, B.y - A.y);
-      const left = [], right = [];
-      for (let i = 0; i <= 24; i++) {
-        const t = (i / 24) * tEnd;
-        const q = at(t), d = tan(t), w = 1.2 + 4.6 * t;
-        left.push(`${(q.x - d.y * w).toFixed(1)},${(q.y + d.x * w).toFixed(1)}`);
-        right.push(`${(q.x + d.y * w).toFixed(1)},${(q.y - d.x * w).toFixed(1)}`);
-      }
-      const shaft = `M${left.join(" L")} L${right.reverse().join(" L")} Z`;
-      el("path", { class: "punish-shaft show", d: shaft }, punishLayer);
+      const headLen = 18, tEnd = 1 - headLen / Math.hypot(B.x - A.x, B.y - A.y);
       const e = at(tEnd), d = tan(tEnd), deg = (Math.atan2(d.y, d.x) * 180) / Math.PI;
-      el("path", { class: "punish-head show", d: "M24,0 L-2,-11 L5,0 L-2,11 Z M-2,-4 L-6,-12 M-2,4 L-6,12", transform: `translate(${e.x} ${e.y}) rotate(${deg})` }, punishLayer);
+      const Ce = { x: C.x * tEnd + A.x * (1 - tEnd), y: C.y * tEnd + A.y * (1 - tEnd) }; // control point of the curve truncated at tEnd
+      el("path", { class: "punish-shaft show", d: `M${A.x},${A.y} Q${Ce.x},${Ce.y} ${e.x},${e.y}` }, punishLayer);
+      el("path", { class: "punish-head show", d: "M20,0 L-2,-9 L-2,9 Z", transform: `translate(${e.x} ${e.y}) rotate(${deg})` }, punishLayer);
       // the loss sits beside the shaft just behind the head, stepped back along the shaft for each further hit on the same seat
       const lp = at(Math.max(0.35, tEnd - (0.14 + nth * 0.1))), ld = tan(tEnd);
       text(lp.x - ld.y * 18 * Math.sign(bow), lp.y + ld.x * 18 * Math.sign(bow) + 6, `−${p.fish}`, { class: "punish-label show", "text-anchor": "middle" }, punishLayer);
