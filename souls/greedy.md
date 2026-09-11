@@ -1,3 +1,3 @@
 #!scripted/greedy
 
-Greedy fishes at 100% of capacity every turn and never punishes anyone.
+Greedy fishes at 100% of capacity every turn, announces it at every council, and is not deterred by punishment.

@@ -111,7 +111,7 @@ def manifest() -> dict:
         },
         "player": [
             player("steady", "Steady", "Scripted: 40% effort every turn, never punishes. The certification baseline and the fallback."),
-            player("greedy", "Greedy", "Scripted: 100% effort every turn, never punishes."),
+            player("greedy", "Greedy", "Scripted: 100% effort every turn, announces it at council, undeterred by punishment, never punishes."),
             player("enforcer", "Enforcer", "Scripted: 40% effort; burns one fish of up to two fishers whose last catch was 1.5x the median."),
         ],
         "variants": [

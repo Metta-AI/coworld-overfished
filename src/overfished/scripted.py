@@ -43,7 +43,10 @@ class ScriptedPolicy:
         if round_index > 0:
             return ""
         if self.name == "greedy":
-            return "The lake is large. I fish as hard as my boat allows, and I suggest you do the same."
+            return (
+                "I fish at 100% of capacity every turn, this turn and every turn after it. That is not a threat and "
+                "not a bargain; it is simply what I do. Burn my fish if you like: it will not change my effort."
+            )
         if self.name == "enforcer":
             return (
                 f"I fish at {int(self.effort * 100)}% of capacity. Anyone who lands far more than the rest "
