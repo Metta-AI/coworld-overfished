@@ -109,6 +109,24 @@
     Ambu: { color: "#2f7a7a", skin: "#b57a4c", ground: "#c9a86a", gear: "safa", gearColor: "#f3ecd8", beard: "full", beardColor: "#bdb4a4", hair: "#8c8378" },
     Pushkar: { color: "#9c2436", skin: "#d9a06b", ground: "#7fa39b", gear: "mukut", gearColor: "#e5b53f", beard: "moustache", earring: "ring", necklace: true, cloth: "cloth-dots" },
     Varsha: { color: "#a5522a", skin: "#e2b98f", ground: "#5f7f5f", gear: "veil", gearColor: "#7c8fa8", earring: "drop", bindi: true, necklace: true, cloth: "cloth-stripes" },
+    // the second sixteen: new headgear (kulah cap, wrapped shawl, ascetic topknot, braid, forehead tikka) and
+    // colours picked to stay apart from the first sixteen at 20px by hue and by value
+    Arun: { color: "#f3ec8e", skin: "#cf9a6a", ground: "#2f3d66", gear: "kulah", gearColor: "#9c2436", beard: "moustache", cloth: "cloth-stripes" },
+    Bindu: { color: "#f7a1b5", skin: "#e6c39d", ground: "#4c6a5a", gear: "veil", gearColor: "#f3ecd8", bindi: true, nosering: true, earring: "ring", necklace: true },
+    Chand: { color: "#d9dde4", skin: "#d9a06b", ground: "#1f3f78", gear: "pagri", gearColor: "#f3ecd8", beard: "full", cloth: "cloth-stripes" },
+    Devika: { color: "#3d1a66", skin: "#e2b98f", ground: "#c99a3a", gear: "mukut", gearColor: "#e5b53f", earring: "drop", necklace: true, bindi: true, cloth: "cloth-dots" },
+    Gauri: { color: "#f6c8a2", skin: "#e6c39d", ground: "#3f7f5c", gear: "braid", earring: "ring", bindi: true, necklace: true, cloth: "cloth-stripes" },
+    Hari: { color: "#4caf50", skin: "#b57a4c", ground: "#6f8fa6", gear: "topi", gearColor: "#f3ecd8", beard: "moustache", cloth: "cloth-dots" },
+    Ila: { color: "#9fd6e8", skin: "#d9a06b", ground: "#5a3348", gear: "tikka", earring: "drop", necklace: true, cloth: "cloth-stripes" },
+    Kiran: { color: "#ffd166", skin: "#d9a06b", ground: "#7fa39b", gear: "safa", gearColor: "#f3ecd8", cloth: "cloth-stripes" },
+    Lata: { color: "#b5d33d", skin: "#c78e5c", ground: "#8b4a3a", gear: "veil", gearColor: "#f3ecd8", lotus: true, earring: "ring", bindi: true },
+    Mohan: { color: "#2f3e46", skin: "#6b8fd1", ground: "#d9b25a", gear: "mukut", gearColor: "#e5b53f", plume: true, necklace: true, cloth: "cloth-dots" },
+    Nanda: { color: "#3ecfa3", skin: "#cf9a6a", ground: "#7a1f1f", gear: "kulah", gearColor: "#f3ecd8", beard: "full", beardColor: "#5a3a22", cloth: "cloth-stripes" },
+    Prem: { color: "#6c63ff", skin: "#e2b98f", ground: "#c99a3a", gear: "pagri", gearColor: "#f3ecd8", plume: true, beard: "moustache", cloth: "cloth-dots" },
+    Rohan: { color: "#8a8f96", skin: "#b57a4c", ground: "#4c6a5a", gear: "safa", gearColor: "#c8452b", beard: "full", cloth: "cloth-stripes" },
+    Sita: { color: "#c8b6e2", skin: "#e6c39d", ground: "#3f5f7a", gear: "shawl", gearColor: "#f3ecd8", bindi: true, earring: "drop", cloth: "cloth-stripes" },
+    Uma: { color: "#b5179e", skin: "#d9a06b", ground: "#d9b25a", gear: "shawl", gearColor: "#ffd166", bindi: true, nosering: true, earring: "ring", cloth: "cloth-dots" },
+    Vikram: { color: "#00b4d8", skin: "#cf9a6a", ground: "#d9b25a", gear: "pagri", gearColor: "#1f3f78", plume: true, beard: "moustache", cloth: "cloth-stripes" },
   };
   const AVATAR_LIST = Object.values(AVATARS);
   let seatSpecs = [];
@@ -189,6 +207,41 @@
       P("M18,17 L22,6 L26.5,16 L32,3 L37.5,16 L42,6 L46,17 L46,22 L18,22 Z", gear);
       C(22, 9.5, 1.3, { fill: RED }); C(32, 7, 1.5, { fill: RED }); C(42, 9.5, 1.3, { fill: RED });
       P("M18,19.5 L46,19.5", { stroke: RED, "stroke-width": 1.2 });
+      if (s.plume) { // a peacock feather leaning off the crown
+        P("M33,4 C37,0.5 42,0.5 46,3.5 C42,5 37,6 34,8 Z", { fill: "#2a9d8f", stroke: INK, "stroke-width": 0.6 });
+        C(43.5, 3, 1.4, { fill: "#1f3f78", stroke: GOLD, "stroke-width": 0.5 });
+      }
+    } else if (s.gear === "kulah") {
+      P("M18,22 C19,10 27,3 36,3 C44,3 47,12 46,22 Z", gear);
+      P("M20,17 C28,12 38,12 45,16", line(0.7));
+      P("M18,22 L46,22 L46,25 L18,25 Z", { fill: s.color, stroke: INK, "stroke-width": 0.8 });
+      P("M41,7 C45,0 52,-1 55,3 C51,3 46,6 43,10 Z", { fill: "#3f8f7a", stroke: INK, "stroke-width": 0.6 });
+      C(41.5, 8, 1.7, { fill: GOLD, stroke: INK, "stroke-width": 0.6 });
+    } else if (s.gear === "jata") {
+      P("M22,25 C23,16 32,11 42,13 L45,21 C36,17 27,19 22,25 Z", { fill: hair });
+      P("M24,14 C22,4 30,-2 36,1 C42,-2 47,6 42,14 Z", { fill: hair, stroke: INK, "stroke-width": 0.9 });
+      P("M26,10 C31,8 37,8 42,10", { fill: "none", stroke: GOLD, "stroke-width": 1.4 });
+    } else if (s.gear === "braid") {
+      P("M22,25 C23,16 32,11 42,13 L45,21 C36,17 27,19 22,25 Z", { fill: hair });
+      P("M24,24 C28,18 35,15.5 41,16", { fill: "none", stroke: "#4a342a", "stroke-width": 0.6 });
+      P("M43,20 C50,30 52,46 48,62 C46,50 44,36 41,24 Z", { fill: hair, stroke: INK, "stroke-width": 0.8 });
+      P("M45,30 l3,2 M46,38 l3,2 M47,46 l3,2 M47,54 l3,2", line(0.5));
+      P("M48,62 l-2,6 M48,62 l0,7 M48,62 l2,6", { fill: "none", stroke: s.color, "stroke-width": 1.3, "stroke-linecap": "round" });
+      P("M44,26 C46,27 48,27 50,26", { fill: "none", stroke: GOLD, "stroke-width": 1 });
+    } else if (s.gear === "tikka") {
+      P("M22,25 C23,16 32,11 42,13 L45,21 C36,17 27,19 22,25 Z", { fill: hair });
+      C(45, 24, 5.5, { fill: hair, stroke: INK, "stroke-width": 0.8 });
+      P("M21,24.5 C27,17 36,14 44,16", { fill: "none", stroke: GOLD, "stroke-width": 2.2 });
+      P("M22,24 L22.4,20.5", { stroke: GOLD, "stroke-width": 1 });
+      C(22.6, 19.5, 1.7, { fill: GOLD, stroke: INK, "stroke-width": 0.5 });
+      C(22.6, 19.5, 0.7, { fill: RED });
+    } else if (s.gear === "shawl") {
+      P("M21,26 C23,18 30,15 38,16 L40,23 C32,20 25,21 21,26 Z", { fill: hair });
+      P("M14.5,27 C13,9 36,-2 48,10 C54,16 54,30 55,44 L57.5,72 L45,72 C46,55 47,44 46,36 C45,26 40,18.5 32,18.5 C26,18.5 18.5,22 14.5,27 Z",
+        { fill: gc, "fill-opacity": 0.96, stroke: INK, "stroke-width": 1.1, "stroke-linejoin": "round" });
+      P("M19,42 C24,50 36,53.5 45,46.5 L47,58 C34,64 20,60 16,48 Z", { fill: gc, stroke: INK, "stroke-width": 1, "stroke-linejoin": "round" });
+      P("M15.5,26 C19.5,22.5 26,19.5 32.5,19.5", { fill: "none", stroke: GOLD, "stroke-width": 1.1, "stroke-dasharray": "1.4 2" });
+      P("M18,48 C26,56 36,58 45,52", { fill: "none", stroke: GOLD, "stroke-width": 1, "stroke-dasharray": "1.4 2" });
     } else if (s.gear === "tiara") {
       P("M22,25 C23,16 32,11 42,13 L45,21 C36,17 27,19 22,25 Z", { fill: hair });
       C(45, 23, 6.5, { fill: hair, stroke: INK, "stroke-width": 0.8 });
@@ -339,7 +392,8 @@
     drawCreatureSymbols(defs);
 
     // busts, one symbol per seat
-    seatSpecs = replay.players.map((p, i) => AVATARS[p.pseudonym] || AVATAR_LIST[i % AVATAR_LIST.length]);
+    // persistent identities are "First Surname"; the first name carries the bust and colour
+    seatSpecs = replay.players.map((p, i) => AVATARS[p.pseudonym.split(" ")[0]] || AVATAR_LIST[i % AVATAR_LIST.length]);
     seatSpecs.forEach((s, i) => drawBust(defs, `av-${i}`, s));
 
     const clip = el("clipPath", { id: "frame-clip" }, defs);
@@ -608,7 +662,8 @@
     const nameSpan = el("tspan", { "font-weight": 700 }, plaque);
     nameSpan.textContent = replay.players[i].pseudonym;
     const tally = el("tspan", { "font-size": 12 }, plaque);
-    tally.textContent = " · 0 fish";
+    tally.textContent = " · 00 fish";
+    if (plaque.getComputedTextLength() > 112) nameSpan.textContent = replay.players[i].pseudonym.split(" ")[0];
     // per-turn deltas on the house's water-facing side, measured from the house centre (0, nudge - 23) in this
     // group: below the house on the top row, above it on the bottom row, and as one row beside it for the side
     // seats, vertically centred on the house. Lines are laid out at render time so hidden values leave no gaps.
@@ -941,6 +996,9 @@
     const name = replay.players[speech.slot].pseudonym;
     leaf.portrait.setAttribute("href", `#av-${speech.slot}`);
     leaf.caption.textContent = speech.auto ? `${name} · auto` : name;
+    let captionSize = 10.5;
+    leaf.caption.setAttribute("font-size", captionSize);
+    while (captionSize > 7.5 && leaf.caption.getComputedTextLength() > 90) leaf.caption.setAttribute("font-size", (captionSize -= 0.5));
     const node = leaf.textNode;
     node.classList.toggle("silent", !speech.text);
     node.textContent = speech.text || "says nothing.";
