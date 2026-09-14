@@ -127,8 +127,8 @@ class GameConfig(BaseModel):
     identity: Literal["episode", "persistent"] = Field(
         default="episode",
         description=(
-            "episode: pseudonyms drawn fresh per episode. persistent: a seat's pseudonym is derived from its policy "
-            "display name (players[].name), so the same policy carries the same name across episodes."
+            "episode: pseudonyms drawn fresh per episode. persistent: a seat's pseudonym is derived from a hash of "
+            "its policy display name (players[].name), so the same policy carries the same name across episodes."
         ),
     )
     history_turns: int = Field(default=10, ge=1, le=100, description="Recent turns shown in every observation.")

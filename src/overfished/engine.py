@@ -12,7 +12,7 @@ import random
 from pydantic import BaseModel, ConfigDict, Field
 
 from overfished.config import GameConfig
-from overfished.names import assign_persistent_pseudonyms, assign_pseudonyms
+from overfished.names import assign_persistent_pseudonyms, assign_pseudonyms, policy_tag
 
 REPLAY_SCHEMA = "overfished-replay/1"
 
@@ -259,7 +259,7 @@ class Engine:
     def replay(self) -> dict:
         players = []
         for slot, name in enumerate(self.config.players):
-            players.append({"slot": slot, "pseudonym": self.pseudonyms[slot], "policy": name.name})
+            players.append({"slot": slot, "pseudonym": self.pseudonyms[slot], "policy": policy_tag(name.name)})
         return {
             "schema": REPLAY_SCHEMA,
             "seed": self.seed,

@@ -38,7 +38,7 @@ viewer sniffs the gzip magic rather than trusting the URL. A 60-turn, 8-seat epi
            "boat_capacity": 29, "punish_ratio": 4, "gift_max": 5, "fortune": [0.8, 1.2], "identity": "persistent",
            "punishments_public": true},
   "lake": {"capacity": 1193.0, "growth_rate": 0.35, "collapse_threshold": 298.2, "initial_stock": 976.4, "boat_capacity": 29},
-  "players": [{"slot": 0, "pseudonym": "Padma", "policy": "villager", "model": "anthropic/claude-opus-5"}],
+  "players": [{"slot": 0, "pseudonym": "Padma", "policy": "3c1a9f02", "model": "anthropic/claude-opus-5"}],
   "turns": [{"t": 1, "stock_before": 976.4, "effort": [0.4, 1.0], "fortune": [1.13, 0.91], "catch": [8, 20],
              "gift": [{"frm": 1, "to": 0, "fish": 2}], "punish": [{"frm": 0, "to": 1, "fish": 4, "cost": 1}],
              "fish": [9, 14], "stock_after": 939.1, "auto": []}],

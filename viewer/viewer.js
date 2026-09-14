@@ -17,10 +17,10 @@
 
   const TARGET_SECONDS = 300;
   const SPEEDS = [0.5, 1, 2, 4];
-  const W = 1200, H = 800, CX = 600, CY = 400;
+  const W = 1080, H = 800, CX = 540, CY = 400; // 27:20, so the painting plus a sidebar fills a 16:9 frame
   const FRAME = 32; // outer red band + gold + ink + patterned band + ink
-  const LAKE_RX = 400, LAKE_RY = 250; // the water ellipse
-  const SEAT_RX = 440, SEAT_RY = 262; // the bank ring the pavilions stand on
+  const LAKE_RX = 340, LAKE_RY = 250; // the water ellipse
+  const SEAT_RX = 380, SEAT_RY = 262; // the bank ring the pavilions stand on
   const SKY_BOTTOM = 100;
 
   // ---------------------------------------------------------------- data + timeline
@@ -502,7 +502,7 @@
       el("path", { d: `M${cx - rx},${SKY_BOTTOM + 2} A${rx},${ry} 0 0 1 ${cx + rx},${SKY_BOTTOM + 2} Z`, fill: HILL, stroke: INK, "stroke-width": 1.6 }, scene);
       el("path", { d: `M${cx - rx * 0.7},${SKY_BOTTOM - ry * 0.55} Q${cx},${SKY_BOTTOM - ry * 1.15} ${cx + rx * 0.7},${SKY_BOTTOM - ry * 0.55}`, fill: "none", stroke: "#8fa53a", "stroke-width": 1, opacity: 0.8 }, scene);
     };
-    hill(250, 230, 62); hill(950, 230, 62);
+    hill(CX - 350, 230, 62); hill(CX + 350, 230, 62);
     el("path", { d: `M0,${SKY_BOTTOM + 2} H${W}`, stroke: INK, "stroke-width": 1.4 }, scene);
     // ochre walkway joining the pavilions, then the brown shore path
     el("ellipse", { cx: CX, cy: CY, rx: SEAT_RX + 8, ry: SEAT_RY + 8, fill: "none", stroke: INK, "stroke-width": 24 }, scene);
@@ -550,10 +550,10 @@
     placeTree(108, 196, 1.15); placeTree(120, 214, 0.75); placeTree(W - 108, 196, 1.15); placeTree(W - 120, 214, 0.75);
     placeTree(100, H - FRAME - 6, 0.85); placeTree(W - 100, H - FRAME - 6, 0.85);
     // animals on the grass, decoration only: two cows on the foot band, a peacock by the left shore
-    el("use", { href: "#cow", x: -2, y: -30, width: 64, height: 32, transform: "translate(524 752) scale(1.05)" }, layers.flora);
-    el("use", { href: "#cow", x: -2, y: -30, width: 64, height: 32, transform: "translate(678 752) scale(-1.05 1.05)" }, layers.flora);
+    el("use", { href: "#cow", x: -2, y: -30, width: 64, height: 32, transform: `translate(${CX - 76} 752) scale(1.05)` }, layers.flora);
+    el("use", { href: "#cow", x: -2, y: -30, width: 64, height: 32, transform: `translate(${CX + 78} 752) scale(-1.05 1.05)` }, layers.flora);
     el("use", { href: "#peacock", x: -40, y: -66, width: 80, height: 70, transform: "translate(66 432) scale(0.7)" }, layers.flora);
-    keepOut.push({ x0: 518, y0: 716, x1: 594, y1: 758 }, { x0: 606, y0: 716, x1: 682, y1: 758 }, { x0: 34, y0: 382, x1: 98, y1: 438 });
+    keepOut.push({ x0: CX - 82, y0: 716, x1: CX - 6, y1: 758 }, { x0: CX + 6, y0: 716, x1: CX + 82, y1: 758 }, { x0: 34, y0: 382, x1: 98, y1: 438 });
 
     leafShape(FRAME + 4, H - FRAME - 16, 26, 170); leafShape(W - FRAME - 4, H - FRAME - 16, 154, 170);
 
@@ -778,7 +778,7 @@
     for (let i = 0; i < 64; i++) {
       const a = rng() * Math.PI * 2;
       const r = Math.sqrt(rng());
-      const x = CX + Math.cos(a) * r * 330;
+      const x = CX + Math.cos(a) * r * (LAKE_RX - 70);
       const y = CY + Math.sin(a) * r * 190;
       const dir = rng() < 0.5 ? -1 : 1;
       const size = 40 + rng() * 20;

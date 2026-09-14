@@ -1,5 +1,7 @@
 import json
 
+import pytest
+
 from overfished.config import GameConfig
 from overfished.engine import Action, Engine, Gift, Punishment, Speech, growth, largest_remainder
 
@@ -106,20 +108,27 @@ def test_gifts_are_clipped_to_holdings_and_precede_punishment():
 
 
 def test_persistent_identity_is_stable_across_episodes_and_unique_within_one():
-    from overfished.names import assign_persistent_pseudonyms, persistent_pseudonym
+    from overfished.names import PSEUDONYMS, assign_persistent_pseudonyms, persistent_pseudonym, policy_tag
 
     names = [{"name": n} for n in ["alpha", "beta", "gamma", "delta", "alpha", "eps", "zeta", "eta"]]
     a = Engine(config(identity="persistent", players=names), 11)
     b = Engine(config(identity="persistent", players=names), 12)
     assert a.pseudonyms == b.pseudonyms
     assert len(set(a.pseudonyms)) == 8
+    assert all(" " not in n and n in PSEUDONYMS for n in a.pseudonyms)
     assert a.pseudonyms[0] == persistent_pseudonym("alpha")
-    assert a.pseudonyms[4] != a.pseudonyms[0] and a.pseudonyms[4].split()[0] == a.pseudonyms[0].split()[0]
+    assert a.pseudonyms[4] != a.pseudonyms[0]
     c = Engine(config(identity="persistent", players=[{"name": "gamma"}, {"name": "alpha"}] + names[2:8]), 13)
     assert c.pseudonyms[1] == a.pseudonyms[0]
     assert assign_persistent_pseudonyms(["x"]) == [persistent_pseudonym("x")]
-    episode = Engine(config(players=names), 11)
-    assert all(" " not in n for n in episode.pseudonyms)
+    # forty-eight seats exhaust the pool without repeating; forty-nine cannot be seated
+    assert len(set(assign_persistent_pseudonyms([f"p{i}" for i in range(48)]))) == 48
+    with pytest.raises(ValueError):
+        assign_persistent_pseudonyms([f"p{i}" for i in range(49)])
+    # the replay never carries a policy name, only a stable tag of it
+    tags = [p["policy"] for p in a.replay()["players"]]
+    assert tags[0] == policy_tag("alpha") and len(tags[0]) == 8 and "alpha" not in json.dumps(a.replay())
+    assert tags[0] == tags[4] != tags[1]
 
 
 def collapse_turn(engine: Engine, efforts: list[float]) -> int | None:

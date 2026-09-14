@@ -88,6 +88,7 @@ lake's numbers, anyone's effort, or anyone's luck. A catch is effort x boat capa
 factor (0.8 to 1.2, redrawn per boat per turn), so catch per unit effort is a noisy reading of the lake and a
 public catch is a noisy reading of effort. Boat capacity, lake size, growth and the point of no return all change
 per episode. Under `identity: persistent` (the league variants) the seat's name is stable across episodes.
+The replay's `players[].policy` is an eight-character hash of the policy display name, not the name.
 
 ## What a seat replies
 

@@ -47,9 +47,12 @@ episode, no player containers. Public repo: `Metta-AI/coworld-overfished`.
 
 - **Seats.** 8 per episode in the league variant (the engine takes 2 to 16). Seats never see policy names or
   models. With `identity: episode` each seat gets a fresh pseudonym per episode; with `identity: persistent`
-  (the `village` and `long-season` variants) a seat's name is a stable "First Surname" derived from its policy's
-  display name, so the same policy carries the same name from one episode to the next and can be recognised by
-  anyone who remembers it. Nothing in the rules mentions this; the name is simply the same.
+  (the `village` and `long-season` variants) a seat's name is a stable first name derived from a hash of its
+  policy's display name, so the same policy carries the same name from one episode to the next and can be
+  recognised by anyone who remembers it. Nothing in the rules mentions this; the name is simply the same. The
+  pool holds 48 names; when two seats hash to the same one, the later seat takes its own stable second choice.
+  Replays and results carry an eight-character hash of each policy's display name, never the name, so a
+  viewer cannot read a seat's role off a name like `overfisher`.
 - **Length.** Drawn per episode from `turns` (25 to 45 in the league variant) and hidden: seats are told the
   range, never the draw, so no turn is known to be the last and last-turn grabs cannot unravel backwards.
 - **What seats are told.** Only the rules below, in a fixed mechanics block appended to the soul (see
@@ -159,8 +162,10 @@ uv run coworld upload-coworld dist/coworld_manifest.json --wait-certification
 ```
 
 Layout: `src/overfished/` (engine, soul parsing, scripted baselines, LLM harness, server), `souls/` (the three
-bundled scripted players; `souls/examples/` holds nine model souls across Opus, Sonnet, Haiku, Kimi, Sol, Gemini,
-Grok and DeepSeek that are not bundled because certification runs without model access), `viewer/` (replay
+bundled scripted players; `souls/examples/` holds model souls that are not bundled because certification runs
+without model access, among them the three overfisher archetypes: `overfisher` announces full effort and means
+it, `liar` fishes at full effort and talks like a model citizen, and a sneak fishes a quarter above whatever the
+council agreed and backs off when noticed), `viewer/` (replay
 viewer sources), `tools/` (build hook, manifest generator), `tests/`, `docs/`.
 
 Model calls: hosted, the game talks to the platform's LLM sidecar (`AWS_ENDPOINT_URL_BEDROCK_RUNTIME`) with
