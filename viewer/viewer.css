@@ -19,9 +19,10 @@
 * { box-sizing: border-box; }
 html, body { height: 100%; margin: 0; }
 body { background: var(--bg); color: var(--fg); font: 13px/1.45 var(--sans); overflow: hidden; }
-.app { display: flex; justify-content: center; height: 100dvh; width: 100vw; background: var(--surface); }
-/* the painting is 27:20; the stage takes exactly that and the panel absorbs the remaining width */
-.stage { position: relative; flex: 0 1 calc(100dvh * 1.35); min-width: 0; display: flex; align-items: center; justify-content: center; background: #e9dfc9; }
+.app { display: flex; height: 100dvh; width: 100vw; background: var(--surface); }
+/* the painting is 27:20; the stage takes exactly that and the panel absorbs the remaining width. Any letterbox
+   left when the frame is too narrow is painted in the frame's outer band colour so it reads as border, not gap. */
+.stage { position: relative; flex: 0 1 calc(100dvh * 1.35); min-width: 0; display: flex; align-items: center; justify-content: center; background: #b5432c; }
 .painting { width: 100%; height: 100%; display: block; }
 .overlay { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(255, 253, 244, 0.92); color: var(--fg-subtle); font: 15px var(--serif); }
 .overlay[hidden] { display: none; }
@@ -31,7 +32,7 @@ body { background: var(--bg); color: var(--fg); font: 13px/1.45 var(--sans); ove
 .leaf-scroll { opacity: 0; transition: opacity 0.3s ease; }
 .leaf-scroll.show { opacity: 1; }
 
-.panel { flex: 1 1 380px; min-width: 320px; max-width: 640px; display: flex; flex-direction: column; min-height: 0; border-left: 1px solid var(--border-strong); background: var(--surface); }
+.panel { flex: 1 1 380px; min-width: 340px; display: flex; flex-direction: column; min-height: 0; border-left: 1px solid var(--border-strong); background: var(--surface); }
 .masthead { padding: 14px 18px 8px; border-bottom: 2px solid var(--border-strong); }
 .masthead h1 { margin: 0; font: 700 26px/1.1 var(--serif); letter-spacing: 0.01em; color: var(--ink-navy); }
 .eyebrow { font: 700 10px/1.4 var(--sans); text-transform: uppercase; letter-spacing: 0.1em; color: var(--fg-subtle); }
@@ -98,6 +99,17 @@ td .fortune { color: var(--fg-muted); font-family: var(--mono); font-size: 10px;
 @keyframes pulse-dot { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
 
 .app.chrome-off .panel { display: none; }
+
+/* condensed: ledger only, in a narrow panel */
+.app.condensed .panel { flex: 0 0 280px; min-width: 280px; }
+.app.condensed .masthead { padding: 8px 14px 6px; }
+.app.condensed .masthead h1 { display: none; }
+.app.condensed .masthead .eyebrow { margin-top: 0; }
+.app.condensed section { padding: 8px 14px; }
+.app.condensed .council { display: none; }
+.app.condensed .ledger { flex: 1 1 auto; min-height: 0; overflow-y: auto; border-bottom: 0; }
+.app.condensed td .model { display: none; }
+.app.condensed .transport { padding: 8px 10px; }
 @media (max-width: 860px) {
   .app { flex-direction: column; }
   .stage { flex: 0 0 56vh; }

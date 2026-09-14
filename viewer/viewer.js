@@ -15,6 +15,20 @@
   const app = $("app");
   if (chromeOff) app.classList.add("chrome-off");
 
+  // Two views. Condensed: the painting plus the ledger, for the platform's embedded replay frame. Full: the
+  // painting, ledger and council, when the page is top-level or the embed has been taken fullscreen (the
+  // frame then covers the screen). ?view=full|condensed forces one.
+  const forcedView = hashParams.get("view") || params.get("view");
+  const embedded = window.parent !== window;
+  const coversScreen = () =>
+    Math.abs(window.innerWidth - screen.width) <= 2 && Math.abs(window.innerHeight - screen.height) <= 2;
+  const applyView = () => {
+    const condensed = forcedView ? forcedView === "condensed" : embedded && !coversScreen();
+    app.classList.toggle("condensed", condensed);
+  };
+  applyView();
+  window.addEventListener("resize", applyView);
+
   const TARGET_SECONDS = 300;
   const SPEEDS = [0.5, 1, 2, 4];
   const W = 1080, H = 800, CX = 540, CY = 400; // 27:20, so the painting plus a sidebar fills a 16:9 frame
