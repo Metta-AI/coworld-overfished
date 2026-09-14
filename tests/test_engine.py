@@ -141,7 +141,7 @@ def test_one_defector_is_absorbed_three_collapse_two_depends_on_the_lake():
         two_outcomes.add(collapse_turn(two, [1.0, 1.0] + [0.3] * 6) is None)
         three = Engine(config(), seed)
         when = collapse_turn(three, [1.0, 1.0, 1.0] + [0.3] * 5)
-        assert when is not None and when <= 45, seed
+        assert when is not None and when <= 28, seed
     # two defectors is the sketchy case: some lakes take it, some die
     assert two_outcomes == {True, False}
 
@@ -150,7 +150,7 @@ def test_lakes_differ_in_size_and_boats():
     lakes = {(Engine(config(), seed).lake.capacity, Engine(config(), seed).lake.boat_capacity) for seed in range(1, 9)}
     assert len(lakes) == 8
     for capacity, boat in lakes:
-        assert 600 <= capacity <= 1400 and 13 <= boat <= 37
+        assert 600 <= capacity <= 1400 and 13 <= boat <= 36
 
 
 def test_defector_earns_more_but_less_than_double_when_others_are_moderate():
@@ -254,13 +254,13 @@ def test_results_shape():
 def test_episode_length_is_sampled_and_hidden():
     from overfished.llm import mechanics_block, turn_observation
 
-    lengths = {Engine(config(turns={"lo": 45, "hi": 75}), seed).turn_limit for seed in range(1, 30)}
-    assert len(lengths) > 5 and all(45 <= n <= 75 for n in lengths)
-    engine = Engine(config(turns={"lo": 45, "hi": 75}), 3)
+    lengths = {Engine(config(turns={"lo": 25, "hi": 45}), seed).turn_limit for seed in range(1, 30)}
+    assert len(lengths) > 5 and all(25 <= n <= 45 for n in lengths)
+    engine = Engine(config(turns={"lo": 25, "hi": 45}), 3)
     rules = mechanics_block(engine.config, engine.pseudonyms[0], 8, engine.lake.boat_capacity)
-    assert "between 45 and\n75 fishing turns" in rules
-    assert str(engine.turn_limit) not in rules.replace("45", "").replace("75", "")
+    assert "between 25 and\n45 fishing turns" in rules
+    assert str(engine.turn_limit) not in rules.replace("25", "").replace("45", "")
     play(engine, [0.3] * 8)
     assert len(engine.turns) == engine.turn_limit
-    text = turn_observation(Engine(config(turns={"lo": 45, "hi": 75}), 3), 0, "")
-    assert "of 45" not in text and "of 75" not in text and "no more councils" not in text
+    text = turn_observation(Engine(config(turns={"lo": 25, "hi": 45}), 3), 0, "")
+    assert "of 25" not in text and "of 45" not in text and "no more councils" not in text

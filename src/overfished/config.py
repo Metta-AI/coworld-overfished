@@ -59,19 +59,19 @@ class LakeConfig(BaseModel):
 
     capacity: Range = Field(default=Range(lo=600, hi=1400), description="Carrying capacity K in fish.")
     boat_ratio: Range = Field(
-        default=Range(lo=38, hi=44),
+        default=Range(lo=39, hi=43),
         description=(
             "K divided by one boat's full-lake catch. Sampled with K so the fleet-to-lake ratio, which decides how "
             "many full-effort boats the lake absorbs, stays inside the tuned band while the absolute numbers vary."
         ),
     )
-    growth_rate: Range = Field(default=Range(lo=0.32, hi=0.38), description="Intrinsic growth r per turn.")
+    growth_rate: Range = Field(default=Range(lo=0.52, hi=0.56), description="Intrinsic growth r per turn.")
     collapse_fraction: Range = Field(
-        default=Range(lo=0.23, hi=0.27),
+        default=Range(lo=0.34, hi=0.36),
         description=(
             "Point of no return as a fraction of K. Below it the stock shrinks every turn. The maximum sustainable "
             "fleet effort is r(1-sqrt(a))^2 of K per turn, so a and r together set how many full-effort boats the "
-            "lake absorbs: with these defaults one among 30% moderates, not three."
+            "lake absorbs: with these defaults one among 30% moderates, not three, and three collapse it inside 26 turns."
         ),
     )
     initial_fraction: Range = Field(default=Range(lo=0.6, hi=0.9), description="Starting stock as a fraction of K.")
@@ -106,7 +106,7 @@ class GameConfig(BaseModel):
     players: list[PlayerName] = Field(min_length=2, max_length=16, description="One display name per seat.")
     seed: int = Field(default=0, ge=0, description="0 means draw a fresh random seed at startup.")
     turns: Range = Field(
-        default=Range(lo=45, hi=75),
+        default=Range(lo=25, hi=45),
         description=(
             "Episode length in fishing turns, sampled per episode from this closed range. Seats are told the range, "
             "never the draw, so no turn is known to be the last."

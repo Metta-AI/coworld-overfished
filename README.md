@@ -50,7 +50,7 @@ episode, no player containers. Public repo: `Metta-AI/coworld-overfished`.
   (the `village` and `long-season` variants) a seat's name is a stable "First Surname" derived from its policy's
   display name, so the same policy carries the same name from one episode to the next and can be recognised by
   anyone who remembers it. Nothing in the rules mentions this; the name is simply the same.
-- **Length.** Drawn per episode from `turns` (45 to 75 in the league variant) and hidden: seats are told the
+- **Length.** Drawn per episode from `turns` (25 to 45 in the league variant) and hidden: seats are told the
   range, never the draw, so no turn is known to be the last and last-turn grabs cannot unravel backwards.
 - **What seats are told.** Only the rules below, in a fixed mechanics block appended to the soul (see
   `mechanics_block` in `src/overfished/llm.py`): score, lake, fishing, punishment, council, privacy, reply
@@ -63,15 +63,15 @@ episode, no player containers. Public repo: `Metta-AI/coworld-overfished`.
   so a catch is a noisy reading of effort and the lake, not an exact one.
 - **Lake.** Hidden logistic growth with a point of no return: growth = r (S − A)(1 − S/K). Below A the stock
   shrinks every turn. Every episode samples a different lake from ranges in the config: capacity K 600 to 1400,
-  growth r 0.32 to 0.38 per turn, point of no return A at 23 to 27% of K, starting stock 60 to 90% of K, and
-  a boat size of K/38 to K/44 fish (so 14 to 37 fish per boat at full effort on a full lake; the boat size is
+  growth r 0.52 to 0.56 per turn, point of no return A at 34 to 36% of K, starting stock 60 to 90% of K, and
+  a boat size of K/39 to K/43 fish (14 to 36 fish per boat at full effort on a full lake; the boat size is
   told to the seats, nothing else is). Fishers can read the lake's fullness from their own catch per effort,
   but not its size, growth, or edge, and none of it repeats between episodes.
-  The lake absorbs at most r(1 − √(A/K))² of K per turn of fleet effort. Within the sampled ranges that
-  means: eight boats at 40% hold it at 40 to 73% of capacity; one full-effort defector among seven 30%
-  moderates leaves it at 50 to 74%; two such defectors kill it on most lakes and leave it dying on the rest;
-  three collapse it by turn 17 to 43; eight at full effort kill it inside 15 turns. A defector's catch is
-  about 3x a moderate's while the lake lasts.
+  The lake absorbs at most r(1 − √(A/K))² of K per turn of fleet effort. Within the sampled ranges, over 40
+  seeds: eight boats at 40% hold it at 64 to 78% of capacity; one full-effort defector among seven 30%
+  moderates leaves it at 70 to 80%; two such defectors kill it on about six lakes in ten; three collapse it
+  by turn 12 to 26; eight at full effort kill it inside 10 turns. A defector's catch is about 3x a
+  moderate's while the lake lasts.
 - **Gifts.** Each turn a seat may give up to `gift_max` (5) of its own fish, in total, to other fishers. Public.
 - **Punishment.** Each turn a seat may burn its own fish to destroy a named fisher's: each fish burned destroys
   `punish_ratio` (4) of the target's, clipped to what the target holds. Public by default (`punishments_public`).
@@ -103,13 +103,13 @@ turns drop to zero, past it every seat plays the fallback, applied to all seats 
 
 | Variant | Seats | Turns | Notes |
 | --- | --- | --- | --- |
-| `village` | 8 | 45 to 75 | League default. Council before turn 1 and after every 5 turns. |
+| `village` | 8 | 25 to 45 | League default. Council before turn 1 and after every 5 turns. |
 | `pond` | 4 | 20 to 30 | Cheap smoke variant for trying a soul. |
-| `quiet-lake` | 8 | 45 to 75 | No council. Only the ledger and punishment carry signal. |
-| `long-season` | 8 | 150 to 250 | For local experiments; the wall budget cuts thinking, then goes scripted, if models are slow. |
+| `quiet-lake` | 8 | 25 to 45 | No council. Only the ledger and punishment carry signal. |
+| `long-season` | 8 | 80 to 120 | For local experiments; the wall budget cuts thinking, then goes scripted, if models are slow. |
 
 Leaderboard intent: a policy's standing is its mean score across episodes of the same variant, and only
-same-variant scores are comparable (a 200-turn lake pays out more than a 60-turn one); length variance within a
+same-variant scores are comparable (a 100-turn lake pays out more than a 30-turn one); length variance within a
 variant averages out over episodes.
 
 ## Watch
