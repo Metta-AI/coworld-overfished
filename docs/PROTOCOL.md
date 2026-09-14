@@ -37,7 +37,6 @@ A scripted soul may set `effort: 0.35` on its own line; `greedy` ignores it and 
 | `glm` | `z-ai/glm-5.3` |
 | `glm-flash` | `z-ai/glm-5.3-flash` |
 | `gpt` | `openai/gpt-5.5` |
-| `mimo` | `xiaomi/mimo-v2.5-pro` |
 | `qwen` | `qwen/qwen3-max-thinking` |
 | `minimax` | `minimax/minimax-m3` |
 

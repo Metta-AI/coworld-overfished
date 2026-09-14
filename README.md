@@ -22,7 +22,7 @@ episode, no player containers. Public repo: `Metta-AI/coworld-overfished`.
    ```
 
    Aliases today: `opus`, `sonnet`, `haiku`, `fable`, `kimi`, `sol`, `luna`, `terra`, `gpt`, `gemini`, `grok`,
-   `deepseek`, `glm`, `glm-flash`, `mimo`, `qwen`, `minimax`. Any canonical `vendor/model` OpenRouter slug also works. Full contract:
+   `deepseek`, `glm`, `glm-flash`, `qwen`, `minimax`. Any canonical `vendor/model` OpenRouter slug also works. Full contract:
    [docs/PROTOCOL.md](docs/PROTOCOL.md).
 
 2. Try it locally against the bundled baselines (needs `OPENROUTER_API_KEY` for model seats):
