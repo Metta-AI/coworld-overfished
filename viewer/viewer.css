@@ -64,6 +64,8 @@ td .model { display: block; font: 10px var(--mono); color: var(--fg-muted); font
 td .delta { color: var(--ink-sage); }
 td .delta.zero { color: var(--fg-muted); }
 td .hit { color: var(--ink-terracotta); font-family: var(--mono); font-size: 11px; }
+td .gift { color: var(--ink-navy); font-family: var(--mono); font-size: 11px; }
+td .fortune { color: var(--fg-muted); font-family: var(--mono); font-size: 10px; }
 
 .council { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
 .council-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; margin-top: 4px; padding-right: 4px; }
@@ -111,6 +113,13 @@ td .hit { color: var(--ink-terracotta); font-family: var(--mono); font-size: 11p
 .punish-head.show { opacity: 1; }
 .punish-label { font: 700 18px var(--serif); fill: #ff7a5c; paint-order: stroke; stroke: #2b1a10; stroke-width: 4px; opacity: 0; transition: opacity 0.3s ease; }
 .punish-label.burn { font-size: 13.5px; }
+.gift-label { font: 700 20px var(--serif); fill: #8fc1ff; paint-order: stroke; stroke: #2b1a10; stroke-width: 4px; opacity: 0; transition: opacity 0.3s ease; }
+.gift-label.show { opacity: 1; }
+.gift-label.gave { font-size: 13.5px; }
+.gift-shaft { fill: none; stroke: #1f4f9c; stroke-width: 4; stroke-linecap: round; opacity: 0; transition: opacity 0.3s ease; }
+.gift-shaft.show { opacity: 1; }
+.gift-head { fill: #1f4f9c; stroke: #1f4f9c; stroke-width: 1; stroke-linejoin: round; opacity: 0; transition: opacity 0.3s ease; }
+.gift-head.show { opacity: 1; }
 .lake-fill-paint { transition: width 0.4s ease; }
 .lake-cartouche-text { font: 700 13px var(--serif); fill: #2b1a10; paint-order: stroke; stroke: #f3e7cc; stroke-width: 3px; stroke-linejoin: round; }
 .punish-label.show { opacity: 1; }

@@ -61,6 +61,7 @@ class FakeTransport(Transport):
         if "COUNCIL" in last[:60]:
             self.council_prompts.append(last)
             return json.dumps({"thinking": "say something", "say": f"Seat {slot} says: let us all fish at half."})
+        assert "GIFTS recently" in last and "luck" in messages[0]["content"]
         return json.dumps({"thinking": "let me think more", "continue": True})
 
 

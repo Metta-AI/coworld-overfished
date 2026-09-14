@@ -35,11 +35,13 @@ viewer sniffs the gzip magic rather than trusting the URL. A 60-turn, 8-seat epi
   "schema": "overfished-replay/1",
   "seed": 7,
   "game": {"turns": 60, "commune_every": 5, "commune_rounds": 2, "commune_at_start": true,
-           "boat_capacity": 29, "punish_ratio": 4, "punishments_public": true},
+           "boat_capacity": 29, "punish_ratio": 4, "gift_max": 5, "fortune": [0.8, 1.2], "identity": "persistent",
+           "punishments_public": true},
   "lake": {"capacity": 1193.0, "growth_rate": 0.35, "collapse_threshold": 298.2, "initial_stock": 976.4, "boat_capacity": 29},
   "players": [{"slot": 0, "pseudonym": "Padma", "policy": "villager", "model": "anthropic/claude-opus-5"}],
-  "turns": [{"t": 1, "stock_before": 976.4, "effort": [0.4, 1.0], "catch": [8, 20],
-             "punish": [{"frm": 0, "to": 1, "fish": 4, "cost": 1}], "fish": [7, 16], "stock_after": 939.1, "auto": []}],
+  "turns": [{"t": 1, "stock_before": 976.4, "effort": [0.4, 1.0], "fortune": [1.13, 0.91], "catch": [8, 20],
+             "gift": [{"frm": 1, "to": 0, "fish": 2}], "punish": [{"frm": 0, "to": 1, "fish": 4, "cost": 1}],
+             "fish": [9, 14], "stock_after": 939.1, "auto": []}],
   "communes": [{"before_turn": 1, "order": [0, 1], "rounds": [[{"slot": 0, "text": "...", "auto": false}]]}],
   "scores": [89, 191]
 }
@@ -47,7 +49,9 @@ viewer sniffs the gzip magic rather than trusting the URL. A 60-turn, 8-seat epi
 
 - `lake` is the sampled hidden model. Spectators and analysts see it; seats never do.
 - `turns[].effort` is per seat, in [0, 1]. Efforts are private in-game and public in the replay.
-- `turns[].punish[]` has `fish` (destroyed on the target) and `cost` (burned by the punisher).
+- `turns[].fortune` is each seat's private luck multiplier that turn; seats never see it.
+- `turns[].gift[]` moves `fish` from `frm` to `to`; `turns[].punish[]` has `fish` (destroyed on the target) and
+  `cost` (burned by the punisher).
 - `communes[].order` is the speaking order; `rounds[][]` lists speeches in that order.
 - `turns[].auto` lists seats whose action was the fallback. `speeches[].auto` marks a fallback (silent) message.
 - `players[].model` and the `models` array in results are present when `reveal_models` is true (the default).

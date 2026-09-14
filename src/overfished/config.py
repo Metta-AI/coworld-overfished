@@ -7,6 +7,8 @@ draws from the ranges below using the episode seed.
 
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 # Short names a soul file may put on its first line instead of a full OpenRouter slug.
@@ -114,6 +116,21 @@ class GameConfig(BaseModel):
     commune_rounds: int = Field(default=2, ge=0, le=6, description="Speaking rounds per council, one fisher at a time; 0 disables talk.")
     commune_at_start: bool = Field(default=True, description="Hold an opening council before turn 1.")
     punish_ratio: int = Field(default=4, ge=1, description="Fish destroyed on the target for each fish the punisher burns.")
+    gift_max: int = Field(default=5, ge=0, description="Fish a seat may give away per turn in total; 0 disables gifts.")
+    fortune: Range = Field(
+        default=Range(lo=0.8, hi=1.2),
+        description=(
+            "Private luck multiplier on each boat's catch, drawn per seat per turn from this range, so a public catch "
+            "is not an exact reading of effort. lo=hi=1 disables it."
+        ),
+    )
+    identity: Literal["episode", "persistent"] = Field(
+        default="episode",
+        description=(
+            "episode: pseudonyms drawn fresh per episode. persistent: a seat's pseudonym is derived from its policy "
+            "display name (players[].name), so the same policy carries the same name across episodes."
+        ),
+    )
     history_turns: int = Field(default=10, ge=1, le=100, description="Recent turns shown in every observation.")
     punishments_public: bool = Field(default=True, description="Whether the ledger names who punished whom.")
     reveal_models: bool = Field(default=True, description="Put each seat's model in results and replay.")

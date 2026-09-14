@@ -231,6 +231,31 @@
           "title": "Punish Ratio",
           "type": "integer"
         },
+        "gift_max": {
+          "default": 5,
+          "description": "Fish a seat may give away per turn in total; 0 disables gifts.",
+          "minimum": 0,
+          "title": "Gift Max",
+          "type": "integer"
+        },
+        "fortune": {
+          "$ref": "#/$defs/Range",
+          "default": {
+            "lo": 0.8,
+            "hi": 1.2
+          },
+          "description": "Private luck multiplier on each boat's catch, drawn per seat per turn from this range, so a public catch is not an exact reading of effort. lo=hi=1 disables it."
+        },
+        "identity": {
+          "default": "episode",
+          "description": "episode: pseudonyms drawn fresh per episode. persistent: a seat's pseudonym is derived from its policy display name (players[].name), so the same policy carries the same name across episodes.",
+          "enum": [
+            "episode",
+            "persistent"
+          ],
+          "title": "Identity",
+          "type": "string"
+        },
         "history_turns": {
           "default": 10,
           "description": "Recent turns shown in every observation.",
@@ -420,7 +445,7 @@
     {
       "id": "village",
       "name": "Village (8 seats, 45 to 75 turns)",
-      "description": "The league default: 8 seats, 45 to 75 turns drawn per episode and hidden from the seats, a council before turn 1 and after every 5 turns.",
+      "description": "The league default: 8 seats, 45 to 75 turns drawn per episode and hidden from the seats, a council before turn 1 and after every 5 turns; a policy keeps the same in-game name across episodes.",
       "game_config": {
         "players": [
           {
@@ -447,7 +472,8 @@
           {
             "name": "Fisher 8"
           }
-        ]
+        ],
+        "identity": "persistent"
       }
     },
     {
@@ -545,6 +571,7 @@
           "lo": 150,
           "hi": 250
         },
+        "identity": "persistent",
         "episode_wall_seconds": 2400.0
       }
     }

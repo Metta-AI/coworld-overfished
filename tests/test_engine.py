@@ -1,7 +1,7 @@
 import json
 
 from overfished.config import GameConfig
-from overfished.engine import Action, Engine, Punishment, Speech, growth, largest_remainder
+from overfished.engine import Action, Engine, Gift, Punishment, Speech, growth, largest_remainder
 
 
 def config(seats: int = 8, **overrides) -> GameConfig:
@@ -52,9 +52,74 @@ def test_moderate_effort_is_sustainable():
     play(engine, [0.4] * 8)
     assert engine.results()["collapsed"] is False
     assert engine.stock > 0.35 * engine.lake.capacity
-    # each turn everyone lands the same catch, give or take rounding
-    last = engine.turns[-1].catch
-    assert max(last) - min(last) <= 1
+    # same effort, but luck spreads the catches by up to about a quarter either way
+    last = engine.turns[-1]
+    assert max(last.catch) - min(last.catch) <= 3
+    assert all(0.8 <= f <= 1.2 for f in last.fortune)
+
+
+def test_luck_is_seeded_private_and_averages_out():
+    a, b = Engine(config(), 5), Engine(config(), 5)
+    a.resolve_turn([Action(effort=0.5)] * 8)
+    b.resolve_turn([Action(effort=0.5)] * 8)
+    assert a.turns[0].fortune == b.turns[0].fortune
+    engine = Engine(config(), 5)
+    play(engine, [0.5] * 8)
+    draws = [f for t in engine.turns for f in t.fortune]
+    assert len(set(draws)) > 50
+    assert 0.97 < sum(draws) / len(draws) < 1.03
+    flat = Engine(config(fortune={"lo": 1.0, "hi": 1.0}), 5)
+    flat.resolve_turn([Action(effort=0.5)] * 8)
+    assert max(flat.turns[0].catch) - min(flat.turns[0].catch) <= 1
+
+
+def test_gifts_move_fish_and_are_capped():
+    engine = Engine(config(seats=3, turns=3), 3)
+    engine.resolve_turn([Action(effort=1.0)] * 3)
+    before = list(engine.fish)
+    engine.resolve_turn(
+        [
+            Action(effort=0.0, gift=[Gift(target=1, fish=3), Gift(target=2, fish=4), Gift(target=0, fish=9)]),
+            Action(effort=0.0),
+            Action(effort=0.0),
+        ]
+    )
+    record = engine.turns[-1]
+    assert [(g.to, g.fish) for g in record.gift] == [(1, 3), (2, 2)]  # 5 per turn in total, self-gift ignored
+    assert engine.fish[0] == before[0] - 5
+    assert engine.fish[1] == before[1] + 3 and engine.fish[2] == before[2] + 2
+    assert sum(engine.fish) == sum(before)
+
+
+def test_gifts_are_clipped_to_holdings_and_precede_punishment():
+    engine = Engine(config(seats=2, turns=3, gift_max=5), 3)
+    engine.resolve_turn([Action(effort=0.0, gift=[Gift(target=1, fish=5)]), Action(effort=0.0)])
+    assert engine.turns[-1].gift == []  # nothing held yet
+    engine.resolve_turn([Action(effort=1.0), Action(effort=1.0)])
+    before = list(engine.fish)
+    engine.resolve_turn(
+        [Action(effort=0.0, gift=[Gift(target=1, fish=2)], punish=[Punishment(target=1, fish=1)]), Action(effort=0.0)]
+    )
+    record = engine.turns[-1]
+    assert record.gift[0].fish == 2 and record.punish[0].cost == 1
+    assert engine.fish[1] == before[1] + 2 - record.punish[0].fish
+
+
+def test_persistent_identity_is_stable_across_episodes_and_unique_within_one():
+    from overfished.names import assign_persistent_pseudonyms, persistent_pseudonym
+
+    names = [{"name": n} for n in ["alpha", "beta", "gamma", "delta", "alpha", "eps", "zeta", "eta"]]
+    a = Engine(config(identity="persistent", players=names), 11)
+    b = Engine(config(identity="persistent", players=names), 12)
+    assert a.pseudonyms == b.pseudonyms
+    assert len(set(a.pseudonyms)) == 8
+    assert a.pseudonyms[0] == persistent_pseudonym("alpha")
+    assert a.pseudonyms[4] != a.pseudonyms[0] and a.pseudonyms[4].split()[0] == a.pseudonyms[0].split()[0]
+    c = Engine(config(identity="persistent", players=[{"name": "gamma"}, {"name": "alpha"}] + names[2:8]), 13)
+    assert c.pseudonyms[1] == a.pseudonyms[0]
+    assert assign_persistent_pseudonyms(["x"]) == [persistent_pseudonym("x")]
+    episode = Engine(config(players=names), 11)
+    assert all(" " not in n for n in episode.pseudonyms)
 
 
 def collapse_turn(engine: Engine, efforts: list[float]) -> int | None:

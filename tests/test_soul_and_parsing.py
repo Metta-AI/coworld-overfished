@@ -68,6 +68,9 @@ def test_parse_action_variants():
     assert action.effort == 0.6
     assert action.punish[0].target == 1 and action.punish[0].fish == 2
     assert parse_action({"effort": 45}, e, 0).effort == 0.45
+    gifted = parse_action({"effort": 0.3, "gift": [{"target": other, "fish": 2}, {"target": other, "fish": 0}]}, e, 0)
+    assert isinstance(gifted, Action) and gifted.gift[0].target == 1 and gifted.gift[0].fish == 2 and len(gifted.gift) == 1
+    assert "gift.target" in parse_action({"effort": 0.3, "gift": [{"target": e.pseudonyms[0], "fish": 1}]}, e, 0)
     assert parse_action({"effort": 0.3, "punish": [{"target": other, "fish": 0}]}, e, 0).punish == []
 
 

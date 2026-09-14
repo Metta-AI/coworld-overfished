@@ -19,7 +19,7 @@ from dataclasses import dataclass, field
 import aiohttp
 
 from overfished.config import GameConfig
-from overfished.engine import Action, Engine, Punishment
+from overfished.engine import Action, Engine, Gift, Punishment
 from overfished.soul import Soul
 
 PLAYER_SLOT_HEADER = "X-Coworld-Player-Slot"
@@ -140,12 +140,16 @@ and it has a point of no return: fished below it, it shrinks every turn from the
 size, growth, and point of no return differ from episode to episode.
 
 FISHING. Each turn you choose an effort from 0 to 1. Your boat lands {boat_capacity} fish at effort 1 on a
-completely full lake, and proportionally less as the lake empties: catch = effort x {boat_capacity} x fullness,
-rounded to whole fish. If the fleet asks for more than the lake holds, what is left is shared in proportion to
-effort. Every fisher's catch each turn is public. Efforts are private.
+completely full lake, and proportionally less as the lake empties: catch = effort x {boat_capacity} x fullness x
+luck, rounded to whole fish, where luck is a private factor between {config.fortune.lo:g} and {config.fortune.hi:g}
+drawn fresh for every boat every turn. If the fleet asks for more than the lake holds, what is left is shared in
+proportion to effort. Every fisher's catch each turn is public. Efforts and luck are private.
 
 PUNISHMENT. Each turn you may burn your own fish to destroy a named fisher's: each fish you burn destroys
 {config.punish_ratio} of theirs, up to what they hold. {visibility}
+
+GIFTS. Each turn you may give up to {config.gift_max} of your own fish, in total, to other fishers. Gifts are
+public: everyone sees who gave whom how much.
 
 {council}
 
@@ -157,8 +161,9 @@ REPLY FORMAT. Reply with exactly one JSON object and nothing else. Keep `thinkin
 that takes too long to write is replaced by your default action (repeat your last effort, punish nobody, say
 nothing). On a fishing turn:
   {{"thinking": "<private>", "notebook": "<private, replaces the old notebook>",
-   "effort": <number 0 to 1>, "punish": [{{"target": "<fisher name>", "fish": <whole number>}}]}}
-  `punish` may be an empty list. At a council:
+   "effort": <number 0 to 1>, "punish": [{{"target": "<fisher name>", "fish": <whole number>}}],
+   "gift": [{{"target": "<fisher name>", "fish": <whole number>}}]}}
+  `punish` and `gift` may be empty lists. At a council:
   {{"thinking": "<private>", "notebook": "<private>", "say": "<public message, or an empty string>"}}
 You may instead reply {{"thinking": "<private>", "continue": true}} to keep reasoning privately before
 committing; you get at most {llm.think_turns} such replies per decision, after which you must decide.
@@ -170,10 +175,11 @@ def _ledger(engine: Engine, history: int) -> str:
     turns = engine.turns[-history:]
     if not turns:
         return "CATCH LEDGER (public): no fishing turns yet."
-    header = "turn | " + " | ".join(f"{n:>7}" for n in names)
+    width = max(7, max(len(n) for n in names))
+    header = "turn | " + " | ".join(f"{n:>{width}}" for n in names)
     rows = [header]
     for record in turns:
-        rows.append(f"{record.t:>4} | " + " | ".join(f"{c:>7}" for c in record.catch))
+        rows.append(f"{record.t:>4} | " + " | ".join(f"{c:>{width}}" for c in record.catch))
     totals = ", ".join(f"{names[i]} {engine.fish[i]}" for i in range(len(names)))
     return (
         f"CATCH LEDGER (public), fish landed per turn, last {len(turns)} turn(s):\n"
@@ -194,6 +200,18 @@ def _punishments(engine: Engine, history: int) -> str:
     if not lines:
         return "PUNISHMENTS recently: none."
     return "PUNISHMENTS recently:\n  " + "\n  ".join(lines)
+
+
+def _gifts(engine: Engine, history: int) -> str:
+    names = engine.pseudonyms
+    lines = [
+        f"turn {record.t}: {names[g.frm]} gave {g.fish} fish to {names[g.to]}"
+        for record in engine.turns[-history:]
+        for g in record.gift
+    ]
+    if not lines:
+        return "GIFTS recently: none."
+    return "GIFTS recently:\n  " + "\n  ".join(lines)
 
 
 def _own_catches(engine: Engine, slot: int, history: int) -> str:
@@ -243,10 +261,11 @@ def turn_observation(engine: Engine, slot: int, notebook: str) -> str:
             f"FISHING TURN {engine.turn}. You are {name}.\n{own}",
             _ledger(engine, config.history_turns),
             _punishments(engine, config.history_turns),
+            _gifts(engine, config.history_turns),
             _own_catches(engine, slot, config.history_turns),
             _council_transcript(engine, 2),
             f"YOUR NOTEBOOK: {notebook if notebook else '(empty)'}",
-            f"{_next_council(engine)}\nDecide your effort (0 to 1) and any punishments for this turn. Reply with one JSON object.",
+            f"{_next_council(engine)}\nDecide your effort (0 to 1), any punishments, and any gifts for this turn. Reply with one JSON object.",
         ]
     )
 
@@ -289,6 +308,7 @@ def council_observation(
             f"Your fish: {engine.fish[slot]}.",
             _ledger(engine, config.history_turns),
             _punishments(engine, config.history_turns),
+            _gifts(engine, config.history_turns),
             _own_catches(engine, slot, config.history_turns),
             _council_transcript(engine, 1) if engine.communes else "COUNCILS so far: none.",
             f"YOUR NOTEBOOK: {notebook if notebook else '(empty)'}",
@@ -360,7 +380,26 @@ def parse_action(reply: dict, engine: Engine, slot: int) -> Action | str:
         if fish == 0:
             continue
         punish.append(Punishment(target=target_slot, fish=fish))
-    return Action(effort=round(effort, 3), punish=punish)
+    gifts: list[Gift] = []
+    raw_gift = reply.get("gift") or []
+    if not isinstance(raw_gift, list):
+        return "`gift` must be a list"
+    for entry in raw_gift:
+        if not isinstance(entry, dict):
+            return "each `gift` entry must be an object with `target` and `fish`"
+        target = entry.get("target")
+        target_slot = engine.slot_of(target) if isinstance(target, str) else None
+        if target_slot is None or target_slot == slot:
+            return f"`gift.target` must name another fisher; got {target!r}"
+        fish = entry.get("fish", 1)
+        if isinstance(fish, float) and fish.is_integer():
+            fish = int(fish)
+        if not isinstance(fish, int) or isinstance(fish, bool) or fish < 0:
+            return "`gift.fish` must be a whole number"
+        if fish == 0:
+            continue
+        gifts.append(Gift(target=target_slot, fish=fish))
+    return Action(effort=round(effort, 3), punish=punish, gift=gifts)
 
 
 def clip(text: object, limit: int) -> str:

@@ -12,12 +12,19 @@ import random
 from pydantic import BaseModel, ConfigDict, Field
 
 from overfished.config import GameConfig
-from overfished.names import assign_pseudonyms
+from overfished.names import assign_persistent_pseudonyms, assign_pseudonyms
 
 REPLAY_SCHEMA = "overfished-replay/1"
 
 
 class Punishment(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    target: int = Field(ge=0)
+    fish: int = Field(ge=1)
+
+
+class Gift(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     target: int = Field(ge=0)
@@ -31,6 +38,7 @@ class Action(BaseModel):
 
     effort: float = Field(ge=0.0, le=1.0)
     punish: list[Punishment] = Field(default_factory=list)
+    gift: list[Gift] = Field(default_factory=list)
     auto: bool = Field(default=False, description="True when the harness substituted a fallback action.")
 
 
@@ -61,13 +69,23 @@ class PunishRecord(BaseModel):
     cost: int = Field(description="Fish the punisher burned.")
 
 
+class GiftRecord(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    frm: int
+    to: int
+    fish: int
+
+
 class TurnRecord(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     t: int
     stock_before: float
     effort: list[float]
+    fortune: list[float] = Field(description="Private luck multiplier per seat; spectators see it, seats never do.")
     catch: list[int]
+    gift: list[GiftRecord]
     punish: list[PunishRecord]
     fish: list[int]
     stock_after: float
@@ -127,7 +145,11 @@ class Engine:
         self.lake = sample_lake(config, seed)
         self.turn_limit = random.Random(f"turns:{seed}").randint(int(config.turns.lo), int(config.turns.hi))
         self.stock = self.lake.initial_stock
-        self.pseudonyms = assign_pseudonyms(seed, config.num_players)
+        self.pseudonyms = (
+            assign_persistent_pseudonyms([p.name for p in config.players])
+            if config.identity == "persistent"
+            else assign_pseudonyms(seed, config.num_players)
+        )
         self.fish: list[int] = [0 for _ in range(config.num_players)]
         self.last_effort: list[float] = [0.0 for _ in range(config.num_players)]
         self.turns: list[TurnRecord] = []
@@ -171,12 +193,28 @@ class Engine:
             raise ValueError("the episode is over")
         stock_before = self.stock
         density = self.stock / self.lake.capacity
-        attempts = [a.effort * self.lake.boat_capacity * density for a in actions]
+        luck = random.Random(f"fortune:{self.seed}:{self.turn}")
+        fortune = [round(luck.uniform(self.config.fortune.lo, self.config.fortune.hi), 3) for _ in actions]
+        attempts = [a.effort * self.lake.boat_capacity * density * f for a, f in zip(actions, fortune, strict=True)]
         total = min(int(math.floor(sum(attempts))), int(math.floor(self.stock)))
         catch = largest_remainder(attempts, total)
         for slot, fish in enumerate(catch):
             self.fish[slot] += fish
             self.last_effort[slot] = actions[slot].effort
+
+        gifts: list[GiftRecord] = []
+        for slot, action in enumerate(actions):
+            budget = self.config.gift_max
+            for g in action.gift:
+                if g.target == slot or not 0 <= g.target < self.config.num_players:
+                    continue
+                fish = min(g.fish, budget, self.fish[slot])
+                if fish <= 0:
+                    continue
+                self.fish[slot] -= fish
+                self.fish[g.target] += fish
+                budget -= fish
+                gifts.append(GiftRecord(frm=slot, to=g.target, fish=fish))
 
         punishments: list[PunishRecord] = []
         ratio = self.config.punish_ratio
@@ -198,7 +236,9 @@ class Engine:
             t=self.turn,
             stock_before=round(stock_before, 1),
             effort=[round(a.effort, 3) for a in actions],
+            fortune=fortune,
             catch=catch,
+            gift=gifts,
             punish=punishments,
             fish=list(self.fish),
             stock_after=round(self.stock, 1),
@@ -231,6 +271,9 @@ class Engine:
                 "commune_at_start": self.config.commune_at_start,
                 "boat_capacity": self.lake.boat_capacity,
                 "punish_ratio": self.config.punish_ratio,
+                "gift_max": self.config.gift_max,
+                "fortune": [self.config.fortune.lo, self.config.fortune.hi],
+                "identity": self.config.identity,
                 "punishments_public": self.config.punishments_public,
             },
             "lake": self.lake.model_dump(),

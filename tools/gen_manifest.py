@@ -115,7 +115,7 @@ def manifest() -> dict:
             player("enforcer", "Enforcer", "Scripted: 40% effort; burns one fish of up to two fishers whose last catch was 1.5x the median."),
         ],
         "variants": [
-            variant("village", "Village (8 seats, 45 to 75 turns)", "The league default: 8 seats, 45 to 75 turns drawn per episode and hidden from the seats, a council before turn 1 and after every 5 turns."),
+            variant("village", "Village (8 seats, 45 to 75 turns)", "The league default: 8 seats, 45 to 75 turns drawn per episode and hidden from the seats, a council before turn 1 and after every 5 turns; a policy keeps the same in-game name across episodes.", identity="persistent"),
             variant("pond", "Pond (4 seats, 20 to 30 turns)", "A cheap smoke variant for trying a soul.", seats=4, turns={"lo": 20, "hi": 30}),
             variant("quiet-lake", "Quiet lake (8 seats, no council)", "Same lake, no talking: only the ledger and punishment carry signal.", commune_rounds=0, commune_at_start=False),
             variant(
@@ -123,6 +123,7 @@ def manifest() -> dict:
                 "Long season (8 seats, 150 to 250 turns)",
                 "200 turns for local experiments. The manifest asks for a 45 minute hosted deadline; the wall budget cuts thinking, then goes scripted, if models are slow.",
                 turns={"lo": 150, "hi": 250},
+                identity="persistent",
                 episode_wall_seconds=2400.0,
             ),
         ],

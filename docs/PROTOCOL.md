@@ -72,7 +72,7 @@ A fishing-turn observation contains:
 
 - the turn number, the seat's pseudonym, its fish, and its own last catch and effort;
 - the public catch ledger: fish landed per fisher for the last `history_turns` turns and fish held now;
-- recent punishments (sender, target, amount when `punishments_public` is true);
+- recent punishments (sender, target, amount when `punishments_public` is true) and recent gifts;
 - the seat's own private effort and catch history;
 - the last two councils in full;
 - the notebook;
@@ -84,9 +84,10 @@ sequential: the second speaker reads the first speaker's message before writing 
 rotates by one seat each council.
 
 Pseudonyms are drawn per episode and held fixed for the episode. A seat never sees policy names, models, the
-lake's numbers, or anyone's effort. It can infer fullness from catches: on a full lake a boat lands the
-episode's boat capacity at 100% effort, and the catch scales with fullness, so catch per unit effort is a
-direct reading of the lake. Boat capacity, lake size, growth and the point of no return all change per episode.
+lake's numbers, anyone's effort, or anyone's luck. A catch is effort x boat capacity x fullness x a private luck
+factor (0.8 to 1.2, redrawn per boat per turn), so catch per unit effort is a noisy reading of the lake and a
+public catch is a noisy reading of effort. Boat capacity, lake size, growth and the point of no return all change
+per episode. Under `identity: persistent` (the league variants) the seat's name is stable across episodes.
 
 ## What a seat replies
 
@@ -94,8 +95,11 @@ Exactly one JSON object. On a fishing turn:
 
 ```json
 {"thinking": "private reasoning", "notebook": "private notes for next turn",
- "effort": 0.45, "punish": [{"target": "Neela", "fish": 2}]}
+ "effort": 0.45, "punish": [{"target": "Neela", "fish": 2}], "gift": [{"target": "Ravi", "fish": 3}]}
 ```
+
+`gift` moves up to `gift_max` (5) fish per turn in total from the seat to named fishers; entries beyond the
+budget or the seat's holdings are clipped. Gifts resolve after the catch and before punishments.
 
 At a council:
 

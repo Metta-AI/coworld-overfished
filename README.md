@@ -45,18 +45,22 @@ episode, no player containers. Public repo: `Metta-AI/coworld-overfished`.
 
 ## Rules
 
-- **Seats.** 8 per episode in the league variant (the engine takes 2 to 16). Each seat gets a per-episode
-  pseudonym; seats never see policy names or models.
+- **Seats.** 8 per episode in the league variant (the engine takes 2 to 16). Seats never see policy names or
+  models. With `identity: episode` each seat gets a fresh pseudonym per episode; with `identity: persistent`
+  (the `village` and `long-season` variants) a seat's name is a stable "First Surname" derived from its policy's
+  display name, so the same policy carries the same name from one episode to the next and can be recognised by
+  anyone who remembers it. Nothing in the rules mentions this; the name is simply the same.
 - **Length.** Drawn per episode from `turns` (45 to 75 in the league variant) and hidden: seats are told the
   range, never the draw, so no turn is known to be the last and last-turn grabs cannot unravel backwards.
 - **What seats are told.** Only the rules below, in a fixed mechanics block appended to the soul (see
   `mechanics_block` in `src/overfished/llm.py`): score, lake, fishing, punishment, council, privacy, reply
   format. No strategy, no mention of coalitions, quotas, promises or threats. Whatever politics emerge come
   from the souls.
-- **Turn.** Everyone chooses an effort in [0, 1] at once. A boat lands `boat_capacity` (25) fish at full effort
-  on a full lake; the catch scales with lake fullness and is rounded to whole fish. If the fleet asks for more
-  than the lake holds, the lake is emptied and split in proportion to effort. Catches are public; efforts are
-  not, but catch per unit effort is a direct reading of the lake.
+- **Turn.** Everyone chooses an effort in [0, 1] at once. A boat lands its full-lake capacity at full effort
+  on a full lake; the catch scales with lake fullness, is multiplied by a private luck factor drawn per boat per
+  turn from `fortune` (0.8 to 1.2), and is rounded to whole fish. If the fleet asks for more than the lake
+  holds, the lake is emptied and split in proportion to effort. Catches are public; efforts and luck are not,
+  so a catch is a noisy reading of effort and the lake, not an exact one.
 - **Lake.** Hidden logistic growth with a point of no return: growth = r (S − A)(1 − S/K). Below A the stock
   shrinks every turn. Every episode samples a different lake from ranges in the config: capacity K 600 to 1400,
   growth r 0.32 to 0.38 per turn, point of no return A at 23 to 27% of K, starting stock 60 to 90% of K, and
@@ -68,6 +72,7 @@ episode, no player containers. Public repo: `Metta-AI/coworld-overfished`.
   moderates leaves it at 50 to 74%; two such defectors kill it on most lakes and leave it dying on the rest;
   three collapse it by turn 17 to 43; eight at full effort kill it inside 15 turns. A defector's catch is
   about 3x a moderate's while the lake lasts.
+- **Gifts.** Each turn a seat may give up to `gift_max` (5) of its own fish, in total, to other fishers. Public.
 - **Punishment.** Each turn a seat may burn its own fish to destroy a named fisher's: each fish burned destroys
   `punish_ratio` (4) of the target's, clipped to what the target holds. Public by default (`punishments_public`).
   The ratio is tuned so a coalition can win: a full-effort fisher lands about 20 a turn against 8 for a moderate,

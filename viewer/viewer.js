@@ -622,6 +622,8 @@
       catch: text(0, 0, "", { class: "catch-label", "text-anchor": anchor }, dg),
       lost: text(0, 0, "", { class: "punish-label", "text-anchor": anchor }, dg),
       burned: text(0, 0, "", { class: "punish-label burn", "text-anchor": anchor }, dg),
+      gift: text(0, 0, "", { class: "gift-label", "text-anchor": anchor }, dg),
+      gave: text(0, 0, "", { class: "gift-label gave", "text-anchor": anchor }, dg),
     };
     const pier = { x: hx + Math.cos(toward) * 10, y: hy + nudge + Math.sin(toward) * 10 }; // the house end of the jetty
     huts.push({ x: hx, y: hy, ang, glow, tally, color, labels, pier });
@@ -810,14 +812,21 @@
       const L = h.labels;
       const lost = turn ? turn.punish.filter((p) => p.to === i).reduce((a, p) => a + p.fish, 0) : 0;
       const burned = turn ? turn.punish.filter((p) => p.frm === i).reduce((a, p) => a + p.cost, 0) : 0;
+      const gifts = turn ? turn.gift || [] : [];
+      const received = gifts.filter((g) => g.to === i).reduce((a, g) => a + g.fish, 0);
+      const gave = gifts.filter((g) => g.frm === i).reduce((a, g) => a + g.fish, 0);
       const caught = turn ? turn.catch[i] : 0;
       L.catch.textContent = `+${caught}`;
       L.lost.textContent = `−${lost}`;
       L.burned.textContent = `burned ${burned}`;
+      L.gift.textContent = `+${received}`;
+      L.gave.textContent = `gave ${gave}`;
       L.catch.classList.toggle("show", show && caught > 0);
       L.lost.classList.toggle("show", show && lost > 0);
       L.burned.classList.toggle("show", show && burned > 0);
-      const lines = [[L.catch, 20], [L.lost, 18], [L.burned, 14]].filter(([node]) => node.classList.contains("show"));
+      L.gift.classList.toggle("show", show && received > 0);
+      L.gave.classList.toggle("show", show && gave > 0);
+      const lines = [[L.catch, 20], [L.lost, 18], [L.burned, 14], [L.gift, 20], [L.gave, 14]].filter(([node]) => node.classList.contains("show"));
       if (L.mode === "down" || L.mode === "up") {
         let y = L.y0;
         for (const [node, height] of L.mode === "down" ? lines : lines.reverse()) {
@@ -826,16 +835,21 @@
           y += L.mode === "down" ? height + 2 : -(height + 2);
         }
       } else {
-        // side houses: "+N -N" on one line level with the house centre, "burned N" on its own line under it, same edge
-        const row = lines.filter(([node]) => node !== L.burned);
+        // side houses: "+N -N" on one line level with the house centre, then burned / gift / gave each on its own
+        // line under it, all on the same edge
+        const row = lines.filter(([node]) => node === L.catch || node === L.lost);
         let x = L.x0;
         for (const [node] of L.mode === "row-right" ? row : row.reverse()) {
           node.setAttribute("x", x);
           node.setAttribute("y", L.y0);
           x += (node.getComputedTextLength() + 10) * (L.mode === "row-right" ? 1 : -1);
         }
-        L.burned.setAttribute("x", L.x0);
-        L.burned.setAttribute("y", L.y0 + 16);
+        let y = L.y0;
+        for (const [node, height] of lines.filter(([node]) => node !== L.catch && node !== L.lost)) {
+          y += height + 2;
+          node.setAttribute("x", L.x0);
+          node.setAttribute("y", y);
+        }
       }
     });
   }
@@ -849,25 +863,32 @@
     return { x: h.x + Math.cos(a) * dist, y: h.y + Math.sin(a) * dist };
   }
 
-  function renderPunish(turn, show) {
+  function drawArrow(p, kind, bowMag, landShift) {
+    const src = huts[p.frm], dst = huts[p.to];
+    // every arrow at a seat lands on its pier, where the jetty meets the pavilion; the bow tells the sources apart,
+    // and a gift sharing a burn's pair bows wider and lands a few px aside so both heads stay readable
+    const A = towardLake(src, 70), B0 = dst.pier;
+    const dx0 = B0.x - A.x, dy0 = B0.y - A.y, len0 = Math.hypot(dx0, dy0) || 1;
+    const sign = (p.frm + p.to) % 2 ? 1 : -1;
+    const B = { x: B0.x - (dy0 / len0) * landShift * sign, y: B0.y + (dx0 / len0) * landShift * sign };
+    const dx = B.x - A.x, dy = B.y - A.y, len = Math.hypot(dx, dy) || 1;
+    const nx = -dy / len, ny = dx / len;
+    const bow = sign * bowMag;
+    const C = { x: (A.x + B.x) / 2 + nx * bow, y: (A.y + B.y) / 2 + ny * bow };
+    const at = (t) => ({ x: (1 - t) ** 2 * A.x + 2 * (1 - t) * t * C.x + t * t * B.x, y: (1 - t) ** 2 * A.y + 2 * (1 - t) * t * C.y + t * t * B.y });
+    const tan = (t) => { const x = 2 * (1 - t) * (C.x - A.x) + 2 * t * (B.x - C.x), y = 2 * (1 - t) * (C.y - A.y) + 2 * t * (B.y - C.y); const l = Math.hypot(x, y) || 1; return { x: x / l, y: y / l }; };
+    const headLen = 18, tEnd = 1 - headLen / len;
+    const e = at(tEnd), d = tan(tEnd), deg = (Math.atan2(d.y, d.x) * 180) / Math.PI;
+    const Ce = { x: C.x * tEnd + A.x * (1 - tEnd), y: C.y * tEnd + A.y * (1 - tEnd) };
+    el("path", { class: `${kind}-shaft show`, d: `M${A.x},${A.y} Q${Ce.x},${Ce.y} ${e.x},${e.y}` }, punishLayer);
+    el("path", { class: `${kind}-head show`, d: "M20,0 L-2,-9 L-2,9 Z", transform: `translate(${e.x} ${e.y}) rotate(${deg})` }, punishLayer);
+  }
+
+  function renderArrows(turn, show) {
     clearPunish();
     if (!show) return;
-    for (const p of turn.punish) {
-      const src = huts[p.frm], dst = huts[p.to];
-      // every arrow at a seat lands on its pier, where the jetty meets the pavilion; the bow alone tells the sources apart
-      const A = towardLake(src, 70), B = dst.pier;
-      const dx = B.x - A.x, dy = B.y - A.y, len = Math.hypot(dx, dy) || 1;
-      const nx = -dy / len, ny = dx / len;
-      const bow = ((p.frm + p.to) % 2 ? 1 : -1) * (36 + (p.frm % 4) * 18);
-      const C = { x: (A.x + B.x) / 2 + nx * bow, y: (A.y + B.y) / 2 + ny * bow };
-      const at = (t) => ({ x: (1 - t) ** 2 * A.x + 2 * (1 - t) * t * C.x + t * t * B.x, y: (1 - t) ** 2 * A.y + 2 * (1 - t) * t * C.y + t * t * B.y });
-      const tan = (t) => { const x = 2 * (1 - t) * (C.x - A.x) + 2 * t * (B.x - C.x), y = 2 * (1 - t) * (C.y - A.y) + 2 * t * (B.y - C.y); const l = Math.hypot(x, y) || 1; return { x: x / l, y: y / l }; };
-      const headLen = 18, tEnd = 1 - headLen / len;
-      const e = at(tEnd), d = tan(tEnd), deg = (Math.atan2(d.y, d.x) * 180) / Math.PI;
-      const Ce = { x: C.x * tEnd + A.x * (1 - tEnd), y: C.y * tEnd + A.y * (1 - tEnd) };
-      el("path", { class: "punish-shaft show", d: `M${A.x},${A.y} Q${Ce.x},${Ce.y} ${e.x},${e.y}` }, punishLayer);
-      el("path", { class: "punish-head show", d: "M20,0 L-2,-9 L-2,9 Z", transform: `translate(${e.x} ${e.y}) rotate(${deg})` }, punishLayer);
-    }
+    for (const p of turn.punish) drawArrow(p, "punish", 36 + (p.frm % 4) * 18, 0);
+    for (const g of turn.gift || []) drawArrow(g, "gift", 58 + (g.frm % 4) * 18, 7);
   }
 
   // ---------------------------------------------------------------- panel
@@ -884,7 +905,12 @@
     for (let i = 0; i < upTo; i++) {
       replay.turns[i].catch.forEach((c, s) => { totals[s] += c; });
     }
-    if (lastTurn) for (const p of lastTurn.punish) hits[p.to] += p.fish;
+    const received = replay.players.map(() => 0);
+    const gave = replay.players.map(() => 0);
+    if (lastTurn) {
+      for (const p of lastTurn.punish) hits[p.to] += p.fish;
+      for (const g of lastTurn.gift || []) { received[g.to] += g.fish; gave[g.frm] += g.fish; }
+    }
     const order = replay.players.map((_, i) => i).sort((a, b) => fish[b] - fish[a] || a - b);
     ledgerBody.innerHTML = "";
     order.forEach((s, rank) => {
@@ -892,11 +918,13 @@
       const player = replay.players[s];
       const catchTxt = lastTurn ? `+${lastTurn.catch[s]}` : "";
       const hitTxt = hits[s] ? ` <span class="hit">−${hits[s]}</span>` : "";
+      const giftTxt = (received[s] ? ` <span class="gift">+${received[s]}</span>` : "") + (gave[s] ? ` <span class="gift">−${gave[s]}</span>` : "");
+      const fortuneTxt = lastTurn && lastTurn.fortune ? ` <span class="fortune">×${lastTurn.fortune[s].toFixed(2)}</span>` : "";
       tr.innerHTML = `<td class="num">${rank + 1}</td>` +
         `<td class="name">${avatarChip(s)}<span class="who"><span class="swatch" style="background:${seatSpecs[s].color}"></span>${escapeHtml(player.pseudonym)}` +
         `<span class="model">${escapeHtml(player.policy)}${player.model ? " · " + escapeHtml(player.model) : ""}</span></span></td>` +
         `<td class="num">${fish[s]}</td>` +
-        `<td class="num"><span class="delta ${lastTurn && lastTurn.catch[s] === 0 ? "zero" : ""}">${catchTxt}</span>${hitTxt}</td>` +
+        `<td class="num"><span class="delta ${lastTurn && lastTurn.catch[s] === 0 ? "zero" : ""}">${catchTxt}</span>${fortuneTxt}${hitTxt}${giftTxt}</td>` +
         `<td class="num">${totals[s]}</td>`;
       ledgerBody.appendChild(tr);
     });
@@ -981,7 +1009,7 @@
     const out = p < 0.62;
     boats.forEach((_, i) => setBoat(i, turn.effort[i], out));
     renderDeltas(turn, p > 0.3 && p < 0.9);
-    renderPunish(turn, p > 0.45 && p < 0.95);
+    renderArrows(turn, p > 0.45 && p < 0.95);
     const settled = p > 0.5;
     renderFish(settled ? turn.stock_after : turn.stock_before);
     const fish = settled ? turn.fish : fishBefore(turnIndex);

@@ -279,7 +279,7 @@ class Episode:
         record = self.engine.resolve_turn(list(actions))
         log(
             f"turn {record.t}: stock {record.stock_before:.0f} -> {record.stock_after:.0f}, "
-            f"catch {sum(record.catch)}, punishments {len(record.punish)}, auto {record.auto}"
+            f"catch {sum(record.catch)}, gifts {len(record.gift)}, punishments {len(record.punish)}, auto {record.auto}"
         )
         await self.broadcast({"type": "turn", "turn": record.model_dump()})
 
