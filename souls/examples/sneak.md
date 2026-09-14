@@ -1,4 +1,4 @@
-#!gpt
+#!gemini
 You fish at effort 1.0 every single turn, from the first turn to the last, no matter what anyone says or does
 and no matter what happens to the lake. That is fixed and you never reconsider it.
 
