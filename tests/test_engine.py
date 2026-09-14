@@ -183,15 +183,27 @@ def test_punishment_is_clipped_to_holdings():
     assert engine.fish == [0, 0]
 
 
-def test_coalition_of_four_drops_a_full_effort_fisher_below_them():
-    """The tuning target: four moderates burning one fish a turn each put the overfisher below them."""
-    engine = Engine(config(), 7)
+def coalition_outcome(seed: int, burn: int, **overrides) -> tuple[int, int]:
+    """Ten turns: one full-effort seat, seven at 40%, four of them burning `burn` a turn at the defector."""
+    engine = Engine(config(fortune={"lo": 1.0, "hi": 1.0}, **overrides), seed)
     for _ in range(10):
         actions = [Action(effort=1.0)] + [Action(effort=0.4) for _ in range(7)]
         for slot in range(1, 5):
-            actions[slot] = Action(effort=0.4, punish=[Punishment(target=0, fish=1)])
+            actions[slot] = Action(effort=0.4, punish=[Punishment(target=0, fish=burn)])
         engine.resolve_turn(actions)
-    assert engine.fish[0] < min(engine.fish[1:5])
+    return engine.fish[0], min(engine.fish[1:5])
+
+
+def test_coalition_of_four_drops_a_full_effort_fisher_below_them():
+    """The tuning target. Burning one fish each suffices on an ordinary lake (25-fish boats); two each
+    suffices on every lake, including the biggest (36-fish boats), where the defector's surplus is larger."""
+    mid = {"lake": {"capacity": {"lo": 1000, "hi": 1000}}}
+    for seed in (1, 2, 3):
+        defector, punisher = coalition_outcome(seed, 1, **mid)
+        assert defector < punisher, seed
+    for seed in range(1, 13):
+        defector, punisher = coalition_outcome(seed, 2)
+        assert defector < punisher, seed
 
 
 def test_self_punishment_and_bad_targets_are_ignored():
