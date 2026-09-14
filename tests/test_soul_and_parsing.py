@@ -107,3 +107,16 @@ async def test_transport_reads_json_from_reasoning_when_content_is_empty(monkeyp
     transport = Transport(base_url="http://fake", api_key=None, timeout_seconds=1.0, session=FakeSession())
     text = await transport.complete(model="deepseek/deepseek-v4-pro", messages=[], max_tokens=10, slot=0)
     assert extract_json(text) == {"effort": 0.3, "punish": []}
+
+
+def test_manifest_declares_named_players_inline():
+    """The platform's check (coworld.manifest_validation._declares_named_players) needs an inline object schema."""
+    import json
+    from pathlib import Path
+
+    manifest = json.loads((Path(__file__).resolve().parent.parent / "coworld_manifest_template.json").read_text())
+    players = manifest["game"]["config_schema"]["properties"]["players"]
+    assert players["type"] == "array"
+    items = players["items"]
+    assert items["type"] == "object" and items["properties"]["name"]["type"] == "string"
+    assert "$ref" not in json.dumps(items)

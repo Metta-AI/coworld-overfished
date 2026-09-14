@@ -32,6 +32,15 @@ def config_schema() -> dict:
     schema["title"] = "Overfished game config"
     tokens = schema["properties"]["tokens"]
     assert tokens["minItems"] == 2 and tokens["maxItems"] == 16
+    # Hosted dispatch injects policy display names into players[].name only when the items schema is an
+    # inline object with a string `name` (coworld.manifest_validation._declares_named_players); a $ref to
+    # $defs/PlayerName is not recognised and leaves the variant's placeholder names in place.
+    schema["properties"]["players"]["items"] = {
+        "type": "object",
+        "properties": {"name": {"type": "string", "minLength": 1}},
+        "required": ["name"],
+        "additionalProperties": False,
+    }
     return schema
 
 
