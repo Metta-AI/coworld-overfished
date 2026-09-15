@@ -99,6 +99,7 @@ td .fortune { color: var(--fg-muted); font-family: var(--mono); font-size: 10px;
 @keyframes pulse-dot { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
 
 .app.chrome-off .panel { display: none; }
+.app.chrome-off .stage { flex: 1 1 auto; background: #1b120c; } /* painting alone, centred, dark mat */
 
 /* condensed: ledger only, in a narrow panel */
 .app.condensed .panel { flex: 0 0 280px; min-width: 280px; }
@@ -110,10 +111,12 @@ td .fortune { color: var(--fg-muted); font-family: var(--mono); font-size: 10px;
 .app.condensed .ledger { flex: 1 1 auto; min-height: 0; overflow-y: auto; border-bottom: 0; }
 .app.condensed td .model { display: none; }
 .app.condensed .transport { padding: 8px 10px; }
-@media (max-width: 860px) {
+/* portrait frames stack: the painting at full width, the panel underneath */
+@media (max-aspect-ratio: 1/1) {
   .app { flex-direction: column; }
-  .stage { flex: 0 0 56vh; }
-  .panel { flex: 1 1 auto; width: auto; border-left: 0; border-top: 1px solid var(--border-strong); min-height: 0; overflow: hidden; }
+  .stage { flex: 0 0 calc(100vw / 1.35); min-height: 0; }
+  .app.chrome-off .stage { flex: 1 1 auto; }
+  .panel, .app.condensed .panel { flex: 1 1 auto; width: auto; min-width: 0; border-left: 0; border-top: 1px solid var(--border-strong); min-height: 0; overflow: hidden; }
 }
 
 /* painting */

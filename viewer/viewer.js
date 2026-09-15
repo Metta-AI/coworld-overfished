@@ -23,7 +23,8 @@
   const coversScreen = () =>
     Math.abs(window.innerWidth - screen.width) <= 2 && Math.abs(window.innerHeight - screen.height) <= 2;
   const applyView = () => {
-    const condensed = forcedView ? forcedView === "condensed" : embedded && !coversScreen();
+    const roomy = window.innerWidth >= 1100 && window.innerHeight >= 640; // the council needs the room
+    const condensed = forcedView ? forcedView === "condensed" : (embedded && !coversScreen()) || !roomy;
     app.classList.toggle("condensed", condensed);
   };
   applyView();
