@@ -140,6 +140,32 @@ Stream format and replay schema: [docs/GLOBAL.md](docs/GLOBAL.md).
 | `results.json` | `scores` per slot, pseudonyms, final stock, whether the lake collapsed, models, model-call totals. |
 | `player_status.json` | Seat lifecycle snapshot. |
 
+## Train locally
+
+`tools/training_bridge.py` runs the same deterministic lake engine, player observations, council order, action
+parser, and final fish scores as the hosted game. It speaks the shared Coworld JSONL training protocol. Each
+reset requires a seed and the variant's seat count. `--variant` accepts `certification`, `village`, `pond`,
+`quiet-lake`, or `long-season`; `--turns N` fixes episode length for short training pilots.
+
+`--mode choice` exposes 15 discrete actions: five fishing efforts crossed with no social action, one fish of
+punishment against the richest other fisher, or a one-fish gift to the poorest other fisher. It supplies 37
+numeric observation values for Metta reinforcement learning and PufferLib. The public catch ledger and each
+seat's own prior effort come from the game's player view; hidden lake stock, luck, and sampled episode length
+stay hidden. A policy with arbitrary effort, target, gift, or punishment should use `--mode text` instead.
+That mode uses the game's JSON action parser and exact player prompts for Metta post-training. Council
+speech is supported by the protocol's `say` command; numeric trainers send an empty message and still
+observe the public transcript.
+
+```bash
+uv sync --extra test
+.venv/bin/python -m pytest tests/test_training_bridge.py -q
+.venv/bin/python tools/training_bridge.py --variant certification --mode choice
+```
+
+The last command reads one JSON object per line from stdin. Start with
+`{"kind":"reset","seed":"example","players":8}`; subsequent observations supply `decision_id` for
+`say` and `step` calls. A terminal observation reports the game's fish scores and bounded utilities.
+
 ## Develop
 
 ```bash
