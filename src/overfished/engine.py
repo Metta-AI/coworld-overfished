@@ -137,10 +137,13 @@ def largest_remainder(weights: list[float], total: int) -> list[int]:
 
 
 class Engine:
-    def __init__(self, config: GameConfig, seed: int) -> None:
+    def __init__(self, config: GameConfig, seed: int, policy_ids: list[str] | None = None) -> None:
         if seed <= 0:
             raise ValueError("engine seed must be a positive integer; the server draws one when config.seed is 0")
         self.config = config
+        if policy_ids is not None and len(policy_ids) != config.num_players:
+            raise ValueError("policy identifiers must match the number of seats")
+        self.policy_ids = policy_ids
         self.seed = seed
         self.lake = sample_lake(config, seed)
         self.turn_limit = random.Random(f"turns:{seed}").randint(int(config.turns.lo), int(config.turns.hi))
@@ -259,7 +262,7 @@ class Engine:
     def replay(self) -> dict:
         players = []
         for slot, name in enumerate(self.config.players):
-            players.append({"slot": slot, "pseudonym": self.pseudonyms[slot], "policy": policy_tag(name.name)})
+            players.append({"slot": slot, "pseudonym": self.pseudonyms[slot], "policy": self.policy_ids[slot] if self.policy_ids is not None else policy_tag(name.name)})
         return {
             "schema": REPLAY_SCHEMA,
             "seed": self.seed,
@@ -288,6 +291,7 @@ class Engine:
         return {
             "scores": [float(f) for f in self.fish],
             "pseudonyms": list(self.pseudonyms),
+            **({"policy_ids": list(self.policy_ids)} if self.policy_ids is not None else {}),
             "turns_played": len(self.turns),
             "final_stock": round(self.stock, 1),
             "capacity": self.lake.capacity,

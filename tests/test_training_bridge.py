@@ -19,6 +19,8 @@ def test_certification_game_uses_player_views_and_real_scores(mode: str) -> None
     observation = session.reset({"seed": "training-proof", "players": 8})
     counts = {"speech_turn": 0, "decision": 0}
     while observation["kind"] != "terminal":
+        assert "SCRATCHPAD" not in json.dumps(observation["messages"])
+        assert "POLICY ROSTER" not in json.dumps(observation["messages"])
         assert "stock" not in observation["semantic_view"]
         assert "seed" not in observation["semantic_view"]
         counts[observation["kind"]] += 1

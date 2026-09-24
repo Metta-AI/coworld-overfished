@@ -14,12 +14,14 @@ import json
 import os
 import re
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 
 import aiohttp
 
 from overfished.config import GameConfig
 from overfished.engine import Action, Engine, Gift, Punishment
+from overfished.memory import SCRATCHPAD_MAX_BYTES
 from overfished.soul import Soul
 
 PLAYER_SLOT_HEADER = "X-Coworld-Player-Slot"
@@ -108,7 +110,9 @@ def transport_from_env(session: aiohttp.ClientSession, timeout_seconds: float) -
 # ---- prompts ----------------------------------------------------------------------------
 
 
-def mechanics_block(config: GameConfig, pseudonym: str, seat_count: int, boat_capacity: int) -> str:
+def mechanics_block(
+    config: GameConfig, pseudonym: str, seat_count: int, boat_capacity: int, *, persistent_memory: bool = False
+) -> str:
     """The rules a seat is given. Mechanics only: no strategy, no framing of what other fishers might do."""
     llm = config.llm
     council = (
@@ -126,6 +130,11 @@ def mechanics_block(config: GameConfig, pseudonym: str, seat_count: int, boat_ca
         if config.punishments_public
         else "Punishments are anonymous: the target sees the loss; nobody sees who caused it."
     )
+    memory_rules = f"""IDENTITY. The roster lists each fisher's stable policy hash; identical soul files have the same hash across episodes.
+
+SCRATCHPAD. You may read your private scratchpad once before play and update it once after play. It persists
+across episodes and holds up to {SCRATCHPAD_MAX_BYTES} UTF-8 bytes. It is separate from your per-episode notebook.
+""" if persistent_memory else ""
     return f"""
 === OVERFISHED: THE RULES ===
 You are {pseudonym}, one of {seat_count} fishers on one lake. The episode lasts between {int(config.turns.lo)} and
@@ -152,6 +161,8 @@ GIFTS. Each turn you may give up to {config.gift_max} of your own fish, in total
 public: everyone sees who gave whom how much.
 
 {council}
+
+{memory_rules}
 
 PRIVACY. Your thinking and your notebook are private: no other fisher and no public record ever sees them.
 Only `say` at a council is public. Your notebook is handed back to you every turn, up to
@@ -259,6 +270,7 @@ def turn_observation(engine: Engine, slot: int, notebook: str) -> str:
     return "\n\n".join(
         [
             f"FISHING TURN {engine.turn}. You are {name}.\n{own}",
+            policy_roster(engine),
             _ledger(engine, config.history_turns),
             _punishments(engine, config.history_turns),
             _gifts(engine, config.history_turns),
@@ -306,6 +318,7 @@ def council_observation(
         [
             this,
             f"Your fish: {engine.fish[slot]}.",
+            policy_roster(engine),
             _ledger(engine, config.history_turns),
             _punishments(engine, config.history_turns),
             _gifts(engine, config.history_turns),
@@ -523,3 +536,52 @@ async def _decide_calls(brain, transport, engine, observation, council, think_tu
 
 def elapsed_since(start: float) -> float:
     return time.monotonic() - start
+
+
+def policy_roster(engine: Engine) -> str:
+    if engine.policy_ids is None:
+        return ""
+    return "POLICY ROSTER (public):\n" + "\n".join(
+        f"{name}: {identifier}"
+        for name, identifier in zip(engine.pseudonyms, engine.policy_ids, strict=True)
+    )
+
+
+def final_observation(engine: Engine, slot: int, notebook: str) -> str:
+    history = engine.config.history_turns
+    return "\n\n".join([
+        f"FINAL RESULTS. You are {engine.pseudonyms[slot]}. Your score: {engine.fish[slot]}.",
+        policy_roster(engine),
+        _ledger(engine, history),
+        _punishments(engine, history),
+        _gifts(engine, history),
+        _own_catches(engine, slot, history),
+        _council_transcript(engine, 2),
+        f"YOUR NOTEBOOK: {notebook if notebook else '(empty)'}",
+    ])
+
+
+async def scratchpad_decision(
+    brain: SeatBrain, transport: Transport, engine: Engine, observation: str, log: Callable[[str], None]
+) -> dict | None:
+    """Exactly one model call at each episode boundary; failures preserve stored memory."""
+    config = engine.config.llm
+    brain.calls += 1
+    try:
+        async with asyncio.timeout(config.decision_seconds):
+            response = await transport.complete(
+                model=brain.soul.model,
+                messages=[{"role": "system", "content": brain.system_prompt},
+                          {"role": "user", "content": observation}],
+                max_tokens=config.max_output_tokens,
+                slot=brain.slot,
+                reasoning=config.reasoning,
+            )
+        reply = extract_json(response)
+        if reply is None:
+            log("scratchpad reply had no JSON object; memory unchanged")
+        return reply
+    except (LlmError, TimeoutError) as error:
+        brain.failures += 1
+        log(f"scratchpad model call failed: {type(error).__name__}: {error}")
+        return None

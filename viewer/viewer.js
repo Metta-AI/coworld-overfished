@@ -992,7 +992,7 @@
       const fortuneTxt = lastTurn && lastTurn.fortune ? ` <span class="fortune">×${lastTurn.fortune[s].toFixed(2)}</span>` : "";
       tr.innerHTML = `<td class="num">${rank + 1}</td>` +
         `<td class="name">${avatarChip(s)}<span class="who"><span class="swatch" style="background:${seatSpecs[s].color}"></span>${escapeHtml(player.pseudonym)}` +
-        `<span class="model">${escapeHtml(player.policy)}${player.model ? " · " + escapeHtml(player.model) : ""}</span></span></td>` +
+        `<span class="model" title="${escapeHtml(player.policy)}">${escapeHtml(player.policy.replace(/^sha256:/, "").slice(0, 12))}${player.model ? " · " + escapeHtml(player.model) : ""}</span></span></td>` +
         `<td class="num">${fish[s]}</td>` +
         `<td class="num"><span class="delta ${lastTurn && lastTurn.catch[s] === 0 ? "zero" : ""}">${catchTxt}</span>${fortuneTxt}${hitTxt}${giftTxt}</td>` +
         `<td class="num">${totals[s]}</td>`;

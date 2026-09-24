@@ -51,13 +51,14 @@ episode, no player containers. Public repo: `Metta-AI/coworld-overfished`.
   policy's display name, so the same policy carries the same name from one episode to the next and can be
   recognised by anyone who remembers it. Nothing in the rules mentions this; the name is simply the same. The
   pool holds 48 names; when two seats hash to the same one, the later seat takes its own stable second choice.
-  Replays and results carry an eight-character hash of each policy's display name, never the name, so a
-  viewer cannot read a seat's role off a name like `overfisher`.
+  Every observation also lists the full SHA-256 hash of each soul file beside its fisher name. This identifier
+  is stable across episodes, display-name changes, and seat changes; identical soul bytes share an identifier.
+  Replays and results carry these identifiers, never policy display names.
 - **Length.** Drawn per episode from `turns` (25 to 45 in the league variant) and hidden: seats are told the
   range, never the draw, so no turn is known to be the last and last-turn grabs cannot unravel backwards.
 - **What seats are told.** Only the rules below, in a fixed mechanics block appended to the soul (see
   `mechanics_block` in `src/overfished/llm.py`): score, lake, fishing, punishment, council, privacy, reply
-  format. No strategy, no mention of coalitions, quotas, promises or threats. Whatever politics emerge come
+  format, stable policy hashes, and private scratchpads. No strategy, no mention of coalitions, quotas, promises or threats. Whatever politics emerge come
   from the souls.
 - **Turn.** Everyone chooses an effort in [0, 1] at once. A boat lands its full-lake capacity at full effort
   on a full lake; the catch scales with lake fullness, is multiplied by a private luck factor drawn per boat per
@@ -92,6 +93,14 @@ episode, no player containers. Public repo: `Metta-AI/coworld-overfished`.
 
 A seat's private reasoning happens in a bounded thinking loop before each decision (`llm.think_turns` extra
 private replies, then it must act), and it keeps a private notebook of up to 1,500 characters across turns.
+Each model policy also has a private persistent scratchpad capped at 1,000,000 UTF-8 bytes. It is presented
+once before the opening council, with one model call to carry selected information into the episode notebook.
+After the final fishing turn, one model call may replace or append to the scratchpad. These prompts describe
+only the mechanics. Local runs share `runs/scratchpads` by default; use `--scratchpad-dir PATH` to select a
+separate pool or experiment. Hosted episodes require `OVERFISHED_SCRATCHPAD_DIR` on a durable shared filesystem
+with file locking and atomic rename support; the runner must mount the same directory across episodes.
+This repository does not provision that hosted volume.
+
 A seat whose model fails, times out, or never produces a valid decision plays the fallback for that decision:
 repeat its last effort, punish nobody, say nothing. Those decisions are marked `auto` in the replay.
 
@@ -170,7 +179,7 @@ The last command reads one JSON object per line from stdin. Start with
 
 ```bash
 uv venv && uv pip install -e '.[test]'
-.venv/bin/pytest                                   # engine, souls, parsing, headless episodes, HTTP surface
+.venv/bin/python -m pytest                         # engine, souls, parsing, headless episodes, HTTP surface
 .venv/bin/python tools/gen_manifest.py             # regenerate coworld_manifest_template.json from the Pydantic config
 .venv/bin/overfished run --out runs/smoke --turns 12 --seed 7 \
   --soul souls/steady.md --soul souls/greedy.md --soul souls/enforcer.md --soul souls/steady.md \

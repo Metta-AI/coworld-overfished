@@ -60,7 +60,7 @@ Only the mechanics block: the episode length as a range, never the draw; score (
 within an episode counts for nothing), the lake (hidden, regrows, has a capacity and a point of no return,
 differs every episode), fishing (effort 0 to 1, the boat's full-lake catch for this episode, catches public,
 efforts private), punishment (the burn ratio, visibility), the council procedure, privacy, and the reply
-format. No strategy and no vocabulary of coalitions, quotas, promises or threats is supplied.
+format, stable policy hashes, and private cross-episode scratchpads. No strategy and no vocabulary of coalitions, quotas, promises or threats is supplied.
 
 ## What a seat sees
 
@@ -88,7 +88,10 @@ lake's numbers, anyone's effort, or anyone's luck. A catch is effort x boat capa
 factor (0.8 to 1.2, redrawn per boat per turn), so catch per unit effort is a noisy reading of the lake and a
 public catch is a noisy reading of effort. Boat capacity, lake size, growth and the point of no return all change
 per episode. Under `identity: persistent` (the league variants) the seat's name is stable across episodes.
-The replay's `players[].policy` is an eight-character hash of the policy display name, not the name.
+Every observation includes a roster mapping fisher names to `sha256:<full digest>` identifiers computed from
+actual soul file bytes. The same bytes share an identifier and scratchpad, including duplicate seats;
+renaming or reseating a policy does not change it. Changing any soul bytes changes the identifier.
+The replay's `players[].policy` and results' `policy_ids` use these same identifiers.
 
 ## What a seat replies
 
@@ -148,3 +151,31 @@ One line per event, timestamped: the seating line (pseudonym, model, byte count,
 each decision, every `thinking` string, every raw model reply, notebook size, the committed action or message,
 and the reasons for any retry or fallback. Hosted logs truncate at 10 MiB; a 60-turn episode writes roughly
 0.5 to 1 MiB.
+
+## Persistent scratchpads
+
+Each model policy gets one private read before the opening council (or before fishing when councils are
+disabled) and one optional private write after the last fishing turn. The read call receives the whole saved
+scratchpad and public policy roster, then returns `{"notebook": "notes for this episode"}`. The notebook's
+existing character limit still applies; the scratchpad is not supplied again during play or at the final write.
+The final call sees the final holdings, recent public history, roster, and current private notebook. It returns
+`{"scratchpad": "replacement"}`, `{"scratchpad_append": "text to append"}`, or `{}` to make no change. An empty
+replacement clears the scratchpad. Fishing and council replies cannot modify persistent memory.
+
+The cap is 1,000,000 UTF-8 bytes, enforced on the resulting text. There is one model call per boundary with no
+retry; model context and output limits still apply. Appends allow memory to grow without rewriting it all in
+one response. Failures, invalid replies, and oversized updates retain the previous contents. The game reserves
+one decision budget for the final write; a completely exhausted wall budget skips model calls. Scripted
+baselines do not use scratchpads.
+
+Scratchpads are stored privately under `--scratchpad-dir` (local default `runs/scratchpads`) or
+`OVERFISHED_SCRATCHPAD_DIR`. Use a distinct directory for each pool or experiment. Hosted startup requires
+that environment variable and a durable shared filesystem mounted by the runner; an episode-local directory
+cannot persist across pods. No hosted volume or platform persistence API is provisioned by this game.
+
+Writes are locked and atomic. Concurrent episodes and duplicate seats read their own starting snapshots;
+appends merge, while a replacement is rejected if another write changed the stored text since that snapshot.
+Within an episode writes commit in slot order. Scratchpad contents are never added to public artifacts.
+
+The headless training bridge has no soul-file roster or persistent scratchpad interface; it does not advertise
+these memory mechanics. Its replay policy tags retain the existing display-name hashes.
