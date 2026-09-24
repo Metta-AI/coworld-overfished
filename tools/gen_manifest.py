@@ -53,6 +53,7 @@ def results_schema() -> dict:
             "scores": {"type": "array", "items": {"type": "number"}, "minItems": 2, "maxItems": 16,
                        "description": "Fish held at the end of the episode, one per seat by slot."},
             "pseudonyms": {"type": "array", "items": {"type": "string"}},
+            "policy_ids": {"type": "array", "items": {"type": "string"}},
             "turns_played": {"type": "integer"},
             "final_stock": {"type": "number"},
             "capacity": {"type": "number"},

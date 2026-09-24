@@ -258,7 +258,7 @@
         },
         "identity": {
           "default": "episode",
-          "description": "episode: pseudonyms drawn fresh per episode. persistent: a seat's pseudonym is derived from its policy display name (players[].name), so the same policy carries the same name across episodes.",
+          "description": "episode: pseudonyms drawn fresh per episode. persistent: a seat's pseudonym is derived from a hash of its policy display name (players[].name), so the same policy carries the same name across episodes.",
           "enum": [
             "episode",
             "persistent"
@@ -336,6 +336,12 @@
           "description": "Fish held at the end of the episode, one per seat by slot."
         },
         "pseudonyms": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "policy_ids": {
           "type": "array",
           "items": {
             "type": "string"

@@ -5,11 +5,11 @@ from pathlib import Path
 
 import pytest
 
+from overfished.__main__ import stage_local_episode
 from overfished.config import GameConfig
 from overfished.llm import Transport
-from overfished.server import ArtifactPaths, Episode, load_seats, serve_episode
+from overfished.server import Episode, load_seats, serve_episode
 from overfished.soul import SoulError
-from overfished.__main__ import stage_local_episode
 
 SOULS = Path(__file__).resolve().parent.parent / "souls"
 VILLAGER = SOULS / "examples" / "villager.md"
@@ -53,6 +53,8 @@ class FakeTransport(Transport):
         self.slots_seen.add(slot)
         assert model.startswith("anthropic/") or "/" in model
         assert reasoning == {"effort": "low"}
+        if messages[-1]["content"].startswith("SCRATCHPAD"):
+            return "{}"
         if self.replies is not None:
             return self.replies.pop(0)
         last = messages[-1]["content"]
@@ -69,7 +71,7 @@ async def run_episode(tmp_path: Path, souls: list[Path], transport, **overrides)
     config = config_for(souls, **overrides)
     seats_path, artifacts = stage_local_episode(config, souls, tmp_path)
     document = load_seats(seats_path.resolve().as_uri())
-    episode = Episode.from_seats(config, 7, document, transport, artifacts)
+    episode = Episode.from_seats(config, 7, document, transport, artifacts, tmp_path / "memory")
     await episode.run()
     results = json.loads((tmp_path / "results.json").read_text())
     replay = json.loads((tmp_path / "replay").read_text())
@@ -136,7 +138,7 @@ async def test_exhausted_wall_budget_goes_scripted(tmp_path: Path):
     config = config_for(souls, turns=2)
     seats_path, artifacts = stage_local_episode(config, souls, tmp_path)
     document = load_seats(seats_path.resolve().as_uri())
-    episode = Episode.from_seats(config, 7, document, transport, artifacts)
+    episode = Episode.from_seats(config, 7, document, transport, artifacts, tmp_path / "memory")
     episode.started -= config.episode_wall_seconds + 1
     await episode.run()
     replay = json.loads((tmp_path / "replay").read_text())
@@ -220,7 +222,7 @@ async def test_decision_deadline_falls_back(tmp_path: Path):
     seats_path, artifacts = stage_local_episode(config, souls, tmp_path)
     document = load_seats(seats_path.resolve().as_uri())
     transport = SlowTransport()
-    episode = Episode.from_seats(config, 7, document, transport, artifacts)
+    episode = Episode.from_seats(config, 7, document, transport, artifacts, tmp_path / "memory")
     await episode.run()
     replay = json.loads((tmp_path / "replay").read_text())
     assert all(0 in turn["auto"] for turn in replay["turns"])
