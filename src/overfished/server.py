@@ -107,8 +107,8 @@ class Episode:
             raise ValueError(f"seats document has {len(document.seats)} seats but the config seats {config.num_players}")
         scratchpad_dir = scratchpad_dir or Path(os.environ.get("OVERFISHED_SCRATCHPAD_DIR", "runs/scratchpads"))
         scratchpads = (
-            HostedScratchpadStore(os.environ["OVERFISHED_MEMORY_INPUT_URI"], os.environ["OVERFISHED_MEMORY_OUTPUT_URI"])
-            if "OVERFISHED_MEMORY_INPUT_URI" in os.environ
+            HostedScratchpadStore(os.environ["COGAME_MEMORY_INPUT_URI"], os.environ["COGAME_MEMORY_OUTPUT_URI"])
+            if "COGAME_MEMORY_INPUT_URI" in os.environ
             else ScratchpadStore(scratchpad_dir)
         )
         soul_data = [read_uri(seat.file_uri) for seat in document.seats]
@@ -563,7 +563,7 @@ def main_coworld() -> int:
     replay_uri = os.environ.get("COGAME_LOAD_REPLAY_URI", "").strip()
     if replay_uri:
         return asyncio.run(serve_replay(replay_uri, host, port))
-    if not os.environ.get("OVERFISHED_MEMORY_INPUT_URI") or not os.environ.get("OVERFISHED_MEMORY_OUTPUT_URI"):
+    if not os.environ.get("COGAME_MEMORY_INPUT_URI") or not os.environ.get("COGAME_MEMORY_OUTPUT_URI"):
         raise RuntimeError("hosted episodes require platform memory input and output URIs")
     config = load_config(os.environ["COGAME_CONFIG_URI"])
     document = load_seats(os.environ["COGAME_PLAYER_SEATS_URI"])

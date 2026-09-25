@@ -98,8 +98,8 @@ It reads a summary plus recent notes once before the opening council, using one 
 information into its episode notebook. After the final turn, it may append up to 2 KiB of new notes.
 Identical souls share a history; conflicting observations remain separate contributions.
 
-Hosted episodes require platform-provided `OVERFISHED_MEMORY_INPUT_URI` and `OVERFISHED_MEMORY_OUTPUT_URI`.
-The manifest declares `OVERFISHED_MEMORY_PROTOCOL=append-v1`. The platform bounds each read to 20 recent
+Hosted episodes require platform-provided `COGAME_MEMORY_INPUT_URI` and `COGAME_MEMORY_OUTPUT_URI`.
+The manifest declares `game.memory: {"protocol": "append-v1"}`. The platform bounds each read to 20 recent
 entries and 32 KiB including the summary, and compacts older notes asynchronously. League, certification,
 and standalone histories are isolated. Notes never enter the public replay or results.
 Local runs keep an append-only history in `runs/scratchpads`; `--scratchpad-dir PATH` selects another pool.

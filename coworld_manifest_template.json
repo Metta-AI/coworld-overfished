@@ -429,9 +429,10 @@
           "memory": "2Gi"
         }
       },
-      "env": {
-        "OVERFISHED_MEMORY_PROTOCOL": "append-v1"
-      }
+      "env": {}
+    },
+    "memory": {
+      "protocol": "append-v1"
     }
   },
   "player": [

@@ -123,21 +123,7 @@ async def test_cli_memory_survives_process_restart(tmp_path, unused_tcp_port, mo
             }
         return web.json_response({"choices": [{"message": {"content": json.dumps(reply)}}]})
 
-    async def memory_input(request):
-        return web.json_response({"protocol": "append-v1", "namespace": "test", "policies": {
-            policy_id(soul.read_bytes()): {"summary": ScratchpadStore(memory).read(policy_id(soul.read_bytes())), "notes": []}
-            for soul in [VILLAGER, SOULS / "steady.md"]
-        }})
-
-    async def memory_output(request):
-        payload = await request.json()
-        for key, note in payload["notes"].items():
-            ScratchpadStore(memory).append(key, note)
-        return web.Response(status=200)
-
     app = web.Application()
-    app.router.add_get("/memory/input", memory_input)
-    app.router.add_put("/memory/output", memory_output)
     app.router.add_post("/v1/chat/completions", complete)
     runner = web.AppRunner(app)
     await runner.setup()
@@ -158,6 +144,21 @@ async def test_cli_memory_survives_process_restart(tmp_path, unused_tcp_port, mo
             if index:
                 config = config_for(souls, turns=1, commune_rounds=1, llm={"think_turns": 0})
                 seats_path, artifacts = stage_local_episode(config, souls, out)
+                (out / "memory-input.json").write_text(
+                    json.dumps(
+                        {
+                            "protocol": "append-v1",
+                            "namespace": "test",
+                            "policies": {
+                                policy_id(soul.read_bytes()): {
+                                    "summary": ScratchpadStore(memory).read(policy_id(soul.read_bytes())),
+                                    "notes": [],
+                                }
+                                for soul in souls
+                            },
+                        }
+                    )
+                )
                 environment.update(
                     COGAME_CONFIG_URI=(out / "config.json").as_uri(),
                     COGAME_PLAYER_SEATS_URI=seats_path.as_uri(),
@@ -166,8 +167,8 @@ async def test_cli_memory_survives_process_restart(tmp_path, unused_tcp_port, mo
                     COGAME_PLAYER_FAILURE_URI=artifacts.failure_uri,
                     COGAME_HOST="127.0.0.1",
                     COGAME_PORT="0",
-                    OVERFISHED_MEMORY_INPUT_URI=f"http://127.0.0.1:{unused_tcp_port}/memory/input",
-                    OVERFISHED_MEMORY_OUTPUT_URI=f"http://127.0.0.1:{unused_tcp_port}/memory/output",
+                    COGAME_MEMORY_INPUT_URI=(out / "memory-input.json").as_uri(),
+                    COGAME_MEMORY_OUTPUT_URI=(out / "memory-output.json").as_uri(),
                     AWS_ENDPOINT_URL_BEDROCK_RUNTIME=f"http://127.0.0.1:{unused_tcp_port}",
                 )
                 arguments = []
@@ -207,6 +208,9 @@ async def test_cli_memory_survives_process_restart(tmp_path, unused_tcp_port, mo
                     process.kill()
                     await process.wait()
             assert process.returncode == 0, stdout.decode()
+            if index:
+                for key, note in json.loads((out / "memory-output.json").read_text())["notes"].items():
+                    ScratchpadStore(memory).append(key, note)
             results = json.loads((out / "results.json").read_text())
             assert results["policy_ids"][index] == policy_id(VILLAGER.read_bytes())
             replay = json.loads((out / "replay").read_text())

@@ -8,7 +8,7 @@ import json
 import os
 from pathlib import Path
 from typing import Literal
-from urllib.request import Request, urlopen
+from urllib.parse import urlparse
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -90,8 +90,7 @@ class HostedScratchpadStore:
     """The platform owns persistence. An episode reads a snapshot and publishes only new notes."""
 
     def __init__(self, input_uri: str, output_uri: str):
-        with urlopen(input_uri, timeout=30) as response:
-            self.snapshot = MemoryInput.model_validate_json(response.read(5_000_001))
+        self.snapshot = MemoryInput.model_validate_json(Path(urlparse(input_uri).path).read_bytes())
         self.output_uri = output_uri
         self.notes: dict[str, str] = {}
 
@@ -109,11 +108,6 @@ class HostedScratchpadStore:
         self.notes[identifier] = combined
 
     def flush(self) -> None:
-        request = Request(
-            self.output_uri,
-            data=json.dumps({"protocol": "append-v1", "notes": self.notes}).encode(),
-            headers={"Content-Type": "application/json"},
-            method="PUT",
+        Path(urlparse(self.output_uri).path).write_text(
+            json.dumps({"protocol": "append-v1", "notes": self.notes}), encoding="utf-8"
         )
-        with urlopen(request, timeout=30) as response:
-            response.read()
