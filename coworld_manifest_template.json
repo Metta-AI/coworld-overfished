@@ -428,6 +428,9 @@
           "cpu": "2",
           "memory": "2Gi"
         }
+      },
+      "env": {
+        "OVERFISHED_MEMORY_PROTOCOL": "append-v1"
       }
     }
   },

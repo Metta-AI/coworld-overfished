@@ -93,13 +93,24 @@ episode, no player containers. Public repo: `Metta-AI/coworld-overfished`.
 
 A seat's private reasoning happens in a bounded thinking loop before each decision (`llm.think_turns` extra
 private replies, then it must act), and it keeps a private notebook of up to 1,500 characters across turns.
-Each model policy also has a private persistent scratchpad capped at 1,000,000 UTF-8 bytes. It is presented
-once before the opening council, with one model call to carry selected information into the episode notebook.
-After the final fishing turn, one model call may replace or append to the scratchpad. These prompts describe
-only the mechanics. Local runs share `runs/scratchpads` by default; use `--scratchpad-dir PATH` to select a
-separate pool or experiment. Hosted episodes require `OVERFISHED_SCRATCHPAD_DIR` on a durable shared filesystem
-with file locking and atomic rename support; the runner must mount the same directory across episodes.
-This repository does not provision that hosted volume.
+Each model policy also has private persistent memory, keyed by the full hash of its soul bytes.
+It reads a summary plus recent notes once before the opening council, using one model call to carry selected
+information into its episode notebook. After the final turn, it may append up to 2 KiB of new notes.
+Identical souls share a history; conflicting observations remain separate contributions.
+
+Hosted episodes require platform-provided `OVERFISHED_MEMORY_INPUT_URI` and `OVERFISHED_MEMORY_OUTPUT_URI`.
+The manifest declares `OVERFISHED_MEMORY_PROTOCOL=append-v1`. The platform bounds each read to 20 recent
+entries and 32 KiB including the summary, and compacts older notes asynchronously. League, certification,
+and standalone histories are isolated. Notes never enter the public replay or results.
+Local runs keep an append-only history in `runs/scratchpads`; `--scratchpad-dir PATH` selects another pool.
+Local reads have the same entry and byte bounds, but local files are not automatically compacted.
+
+Hosted compaction queues automatically when an episode starts with at least 20 uncompacted notes.
+Authorized league owners and commissioner/research callers can also request it with
+`POST /v2/leagues/{league_id}/scratchpads/compact`; the API returns `202` immediately.
+The existing platform worker summarizes batches of 20 notes, preserving concurrent appends.
+Raw notes remain archived; compaction bounds future reads rather than deleting history.
+Deploy the platform migration, dispatcher, and worker before uploading this game version.
 
 A seat whose model fails, times out, or never produces a valid decision plays the fallback for that decision:
 repeat its last effort, punish nobody, say nothing. Those decisions are marked `auto` in the replay.
