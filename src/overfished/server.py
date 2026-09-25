@@ -35,7 +35,7 @@ from overfished.llm import (
     transport_from_env,
     turn_observation,
 )
-from overfished.memory import ScratchpadStore, policy_id
+from overfished.memory import HostedScratchpadStore, ScratchpadStore, policy_id
 from overfished.scripted import SCRIPTED_NAMES, ScriptedPolicy, fallback_action, scripted_policy
 from overfished.seats import (
     SeatLog,
@@ -84,7 +84,7 @@ class Episode:
     transport: Transport | None
     artifacts: ArtifactPaths
     status_uri: str | None
-    scratchpads: ScratchpadStore
+    scratchpads: ScratchpadStore | HostedScratchpadStore
     started: float = field(default_factory=time.monotonic)
     phase: str = "starting"
     subscribers: set[web.WebSocketResponse] = field(default_factory=set)
@@ -106,7 +106,11 @@ class Episode:
         if len(document.seats) != config.num_players:
             raise ValueError(f"seats document has {len(document.seats)} seats but the config seats {config.num_players}")
         scratchpad_dir = scratchpad_dir or Path(os.environ.get("OVERFISHED_SCRATCHPAD_DIR", "runs/scratchpads"))
-        scratchpads = ScratchpadStore(scratchpad_dir)
+        scratchpads = (
+            HostedScratchpadStore(os.environ["COGAME_MEMORY_INPUT_URI"], os.environ["COGAME_MEMORY_OUTPUT_URI"])
+            if "COGAME_MEMORY_INPUT_URI" in os.environ
+            else ScratchpadStore(scratchpad_dir)
+        )
         soul_data = [read_uri(seat.file_uri) for seat in document.seats]
         engine = Engine(config, seed, [policy_id(data) for data in soul_data])
         seats: list[SeatRuntime] = []
@@ -337,9 +341,9 @@ class Episode:
                 return None
             observation = (
                 "SCRATCHPAD WRITE. The episode is over. This is your one optional scratchpad update. "
-                "Reply with {\"scratchpad\": \"<replacement text>\"} or "
-                "{\"scratchpad_append\": \"<text to append>\"}, or {} to leave it unchanged. "
-                "The total limit is 1,000,000 UTF-8 bytes; invalid or oversized updates leave it unchanged.\n\n"
+                "Reply with {\"scratchpad_append\": \"<new notes>\"}, or {} to leave memory unchanged. "
+                "Your contribution may contain at most 2048 UTF-8 bytes. Older notes may be compacted into a summary. "
+                "Invalid or oversized contributions are discarded.\n\n"
                 + final_observation(self.engine, seat.slot, seat.brain.notebook)
             )
             return await scratchpad_decision(seat.brain, self.transport, self.engine, observation, seat.note)
@@ -348,14 +352,10 @@ class Episode:
         for seat, reply in zip(self.seats, replies, strict=True):
             if reply is None:
                 continue
-            keys = [key for key in ("scratchpad", "scratchpad_append") if key in reply]
-            if len(keys) != 1 or not isinstance(reply[keys[0]], str):
+            if set(reply) != {"scratchpad_append"} or not isinstance(reply["scratchpad_append"], str):
                 continue
             try:
-                self.scratchpads.write(
-                    self.engine.policy_ids[seat.slot], seat.scratchpad, reply[keys[0]],
-                    append=keys[0] == "scratchpad_append",
-                )
+                self.scratchpads.append(self.engine.policy_ids[seat.slot], reply["scratchpad_append"])
                 seat.note("scratchpad saved")
             except (OSError, ValueError) as error:
                 seat.note(f"scratchpad update failed: {error}")
@@ -372,6 +372,8 @@ class Episode:
                 await self.hold_council()
             await self.fishing_turn()
         await self.write_scratchpads()
+        if isinstance(self.scratchpads, HostedScratchpadStore):
+            await asyncio.to_thread(self.scratchpads.flush)
         self.phase = "done"
         self.finalize()
         await self.broadcast({"type": "end", "scores": self.engine.results()["scores"]})
@@ -561,8 +563,8 @@ def main_coworld() -> int:
     replay_uri = os.environ.get("COGAME_LOAD_REPLAY_URI", "").strip()
     if replay_uri:
         return asyncio.run(serve_replay(replay_uri, host, port))
-    if not os.environ.get("OVERFISHED_SCRATCHPAD_DIR"):
-        raise RuntimeError("hosted episodes require OVERFISHED_SCRATCHPAD_DIR on a durable shared volume")
+    if not os.environ.get("COGAME_MEMORY_INPUT_URI") or not os.environ.get("COGAME_MEMORY_OUTPUT_URI"):
+        raise RuntimeError("hosted episodes require platform memory input and output URIs")
     config = load_config(os.environ["COGAME_CONFIG_URI"])
     document = load_seats(os.environ["COGAME_PLAYER_SEATS_URI"])
     workdir = local_path(os.environ["COGAME_RESULTS_URI"]).parent

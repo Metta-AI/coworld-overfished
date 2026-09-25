@@ -13,19 +13,14 @@ def test_store_limits_and_concurrent_updates(tmp_path):
     store = ScratchpadStore(tmp_path)
     key = policy_id(b"a soul")
     assert store.read(key) == ""
-    store.write(key, "", "a")
-    with pytest.raises(ValueError, match="changed"):
-        store.write(key, "", "stale replacement")
-    store.write(key, "", "b", append=True)
+    store.append(key, "a")
+    store.append(key, "b")
     assert store.read(key) == "ab"
-    full = "é" * (SCRATCHPAD_MAX_BYTES // 2)
-    store.write(key, "ab", full)
-    assert store.read(key) == full
-    with pytest.raises(ValueError, match="exceeds"):
-        store.write(key, full, "x", append=True)
-    assert store.read(key) == full
-    store.write(key, full, "")
-    assert store.read(key) == ""
+    for _ in range(25):
+        store.append(key, "é" * 1024)
+    assert len(store.read(key).encode()) == SCRATCHPAD_MAX_BYTES
+    with pytest.raises(ValueError, match="2048"):
+        store.append(key, "é" * 1025)
     assert store.read(policy_id(b"another soul")) == ""
 
 
@@ -61,7 +56,7 @@ async def make_episode(out, memory, souls, transport, seed):
 async def test_memory_across_episodes_and_roster_before_opening_council(tmp_path):
     memory = tmp_path / "memory"
     souls = [VILLAGER, SOULS / "steady.md"]
-    first = MemoryTransport({"scratchpad": "private previous episode note"})
+    first = MemoryTransport({"scratchpad_append": "private previous episode note"})
     one = await make_episode(tmp_path / "one", memory, souls, first, 7)
     renamed = tmp_path / "renamed.md"
     renamed.write_bytes(VILLAGER.read_bytes())
@@ -93,7 +88,7 @@ async def test_memory_across_episodes_and_roster_before_opening_council(tmp_path
 async def test_invalid_or_absent_update_preserves_memory(tmp_path, update):
     store = ScratchpadStore(tmp_path / "memory")
     key = policy_id(VILLAGER.read_bytes())
-    store.write(key, "", "original")
+    store.append(key, "original")
     await make_episode(
         tmp_path / "episode", store.root, [VILLAGER, SOULS / "steady.md"], MemoryTransport(update), 7
     )
@@ -149,6 +144,21 @@ async def test_cli_memory_survives_process_restart(tmp_path, unused_tcp_port, mo
             if index:
                 config = config_for(souls, turns=1, commune_rounds=1, llm={"think_turns": 0})
                 seats_path, artifacts = stage_local_episode(config, souls, out)
+                (out / "memory-input.json").write_text(
+                    json.dumps(
+                        {
+                            "protocol": "append-v1",
+                            "namespace": "test",
+                            "policies": {
+                                policy_id(soul.read_bytes()): {
+                                    "summary": ScratchpadStore(memory).read(policy_id(soul.read_bytes())),
+                                    "notes": [],
+                                }
+                                for soul in souls
+                            },
+                        }
+                    )
+                )
                 environment.update(
                     COGAME_CONFIG_URI=(out / "config.json").as_uri(),
                     COGAME_PLAYER_SEATS_URI=seats_path.as_uri(),
@@ -157,7 +167,8 @@ async def test_cli_memory_survives_process_restart(tmp_path, unused_tcp_port, mo
                     COGAME_PLAYER_FAILURE_URI=artifacts.failure_uri,
                     COGAME_HOST="127.0.0.1",
                     COGAME_PORT="0",
-                    OVERFISHED_SCRATCHPAD_DIR=str(memory),
+                    COGAME_MEMORY_INPUT_URI=(out / "memory-input.json").as_uri(),
+                    COGAME_MEMORY_OUTPUT_URI=(out / "memory-output.json").as_uri(),
                     AWS_ENDPOINT_URL_BEDROCK_RUNTIME=f"http://127.0.0.1:{unused_tcp_port}",
                 )
                 arguments = []
@@ -197,6 +208,9 @@ async def test_cli_memory_survives_process_restart(tmp_path, unused_tcp_port, mo
                     process.kill()
                     await process.wait()
             assert process.returncode == 0, stdout.decode()
+            if index:
+                for key, note in json.loads((out / "memory-output.json").read_text())["notes"].items():
+                    ScratchpadStore(memory).append(key, note)
             results = json.loads((out / "results.json").read_text())
             assert results["policy_ids"][index] == policy_id(VILLAGER.read_bytes())
             replay = json.loads((out / "replay").read_text())
@@ -212,7 +226,7 @@ async def test_cli_memory_survives_process_restart(tmp_path, unused_tcp_port, mo
 
 
 def _append_in_process(root, key, index):
-    ScratchpadStore(root).write(key, "", f"{index}\n", append=True)
+    ScratchpadStore(root).append(key, f"{index}\n")
 
 
 def test_concurrent_processes_do_not_lose_appends(tmp_path):
@@ -246,7 +260,7 @@ async def test_failed_boundary_calls_preserve_memory(tmp_path, error):
 
     store = ScratchpadStore(tmp_path / "memory")
     key = policy_id(VILLAGER.read_bytes())
-    store.write(key, "", "original")
+    store.append(key, "original")
     souls = [VILLAGER, SOULS / "steady.md"]
     config = config_for(souls, turns=1, llm={"decision_seconds": 0.01})
     path, artifacts = stage_local_episode(config, souls, tmp_path / "episode")
