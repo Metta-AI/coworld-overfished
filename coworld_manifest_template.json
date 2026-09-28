@@ -428,7 +428,11 @@
           "cpu": "2",
           "memory": "2Gi"
         }
-      }
+      },
+      "env": {}
+    },
+    "memory": {
+      "protocol": "append-v1"
     }
   },
   "player": [

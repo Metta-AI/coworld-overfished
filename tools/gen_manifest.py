@@ -117,7 +117,9 @@ def manifest() -> dict:
                 "run": ["overfished"],
                 "source_url": f"{GITHUB}/tree/main",
                 "resources": {"requests": {"cpu": "1", "memory": "1Gi"}, "limits": {"cpu": "2", "memory": "2Gi"}},
+                "env": {},
             },
+            "memory": {"protocol": "append-v1"},
         },
         "player": [
             player("steady", "Steady", "Scripted: 40% effort every turn, never punishes. The certification baseline and the fallback."),

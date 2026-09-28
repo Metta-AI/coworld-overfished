@@ -35,7 +35,13 @@ from overfished.llm import (
     transport_from_env,
     turn_observation,
 )
-from overfished.memory import ScratchpadStore, policy_id
+from overfished.memory import (
+    SCRATCHPAD_NOTE_BYTES,
+    HostedScratchpadStore,
+    MemoryView,
+    ScratchpadStore,
+    policy_id,
+)
 from overfished.scripted import SCRIPTED_NAMES, ScriptedPolicy, fallback_action, scripted_policy
 from overfished.seats import (
     SeatLog,
@@ -62,7 +68,7 @@ class SeatRuntime:
     log: SeatLog
     scripted: ScriptedPolicy | None
     brain: SeatBrain | None
-    scratchpad: str = ""
+    scratchpad: MemoryView = field(default_factory=lambda: MemoryView(summary="", notes=[]))
     scratchpad_loaded: bool = False
 
     def note(self, line: str) -> None:
@@ -84,7 +90,7 @@ class Episode:
     transport: Transport | None
     artifacts: ArtifactPaths
     status_uri: str | None
-    scratchpads: ScratchpadStore
+    scratchpads: ScratchpadStore | HostedScratchpadStore | None
     started: float = field(default_factory=time.monotonic)
     phase: str = "starting"
     subscribers: set[web.WebSocketResponse] = field(default_factory=set)
@@ -105,8 +111,11 @@ class Episode:
     ) -> "Episode":
         if len(document.seats) != config.num_players:
             raise ValueError(f"seats document has {len(document.seats)} seats but the config seats {config.num_players}")
-        scratchpad_dir = scratchpad_dir or Path(os.environ.get("OVERFISHED_SCRATCHPAD_DIR", "runs/scratchpads"))
-        scratchpads = ScratchpadStore(scratchpad_dir)
+        scratchpads: ScratchpadStore | HostedScratchpadStore | None = None
+        if "COGAME_MEMORY_INPUT_URI" in os.environ:
+            scratchpads = HostedScratchpadStore(os.environ["COGAME_MEMORY_INPUT_URI"], os.environ["COGAME_MEMORY_OUTPUT_URI"])
+        elif "COGAME_CONFIG_URI" not in os.environ and (scratchpad_dir is not None or "OVERFISHED_SCRATCHPAD_DIR" in os.environ):
+            scratchpads = ScratchpadStore(scratchpad_dir or Path(os.environ["OVERFISHED_SCRATCHPAD_DIR"]))
         soul_data = [read_uri(seat.file_uri) for seat in document.seats]
         engine = Engine(config, seed, [policy_id(data) for data in soul_data])
         seats: list[SeatRuntime] = []
@@ -136,7 +145,7 @@ class Episode:
                     soul=soul,
                     system_prompt=soul.text
                     + "\n\n"
-                    + mechanics_block(config, engine.pseudonyms[seat.slot], config.num_players, engine.lake.boat_capacity, persistent_memory=True),
+                    + mechanics_block(config, engine.pseudonyms[seat.slot], config.num_players, engine.lake.boat_capacity, persistent_memory=scratchpads is not None),
                 )
             runtime = SeatRuntime(slot=seat.slot, soul=soul, log=seat_log, scripted=scripted, brain=brain)
             runtime.note(
@@ -186,7 +195,7 @@ class Episode:
 
     def think_turns_now(self, *, reserve_scratchpad: bool = True) -> int:
         remaining = self.config.episode_wall_seconds - (time.monotonic() - self.started)
-        if reserve_scratchpad:
+        if reserve_scratchpad and self.scratchpads is not None:
             remaining -= self.config.llm.decision_seconds
         if remaining <= 0:
             return -1
@@ -299,6 +308,7 @@ class Episode:
         await self.broadcast({"type": "turn", "turn": record.model_dump()})
 
     async def read_scratchpads(self) -> None:
+        assert self.scratchpads is not None
         self.phase = "scratchpad_read"
 
         async def read(seat: SeatRuntime) -> None:
@@ -317,7 +327,9 @@ class Episode:
                 + self.engine.pseudonyms[seat.slot] + ".\n" + policy_roster(self.engine)
                 + "\nThis is your one read of your private scratchpad. You may carry notes into your episode notebook. "
                 + f"Reply with {{\"notebook\": \"<up to {self.config.llm.notebook_max_chars} characters>\"}}."
-                + "\nScratchpad (JSON string):\n" + json.dumps(seat.scratchpad, ensure_ascii=False)
+                + "\nCompacted summary:\n" + seat.scratchpad.summary
+                + "\nRecent notes (oldest first, newest last):\n"
+                + "\n\n".join(f"Note {index}:\n{note}" for index, note in enumerate(seat.scratchpad.notes, 1))
             )
             reply = await scratchpad_decision(seat.brain, self.transport, self.engine, observation, seat.note)
             if reply is not None and isinstance(reply.get("notebook"), str):
@@ -327,7 +339,12 @@ class Episode:
         await asyncio.gather(*(read(seat) for seat in self.seats))
 
     async def write_scratchpads(self) -> None:
+        assert self.scratchpads is not None
         self.phase = "scratchpad_write"
+        note_limits = {}
+        for seat in self.seats:
+            shared_seats = self.engine.policy_ids.count(self.engine.policy_ids[seat.slot])
+            note_limits[seat.slot] = (SCRATCHPAD_NOTE_BYTES - (shared_seats - 1)) // shared_seats
 
         async def prepare(seat: SeatRuntime) -> dict | None:
             if (
@@ -337,9 +354,11 @@ class Episode:
                 return None
             observation = (
                 "SCRATCHPAD WRITE. The episode is over. This is your one optional scratchpad update. "
-                "Reply with {\"scratchpad\": \"<replacement text>\"} or "
-                "{\"scratchpad_append\": \"<text to append>\"}, or {} to leave it unchanged. "
-                "The total limit is 1,000,000 UTF-8 bytes; invalid or oversized updates leave it unchanged.\n\n"
+                "Reply with {\"scratchpad_append\": \"<new notes>\"}, or {} to leave memory unchanged. "
+                f"Identical souls share one {SCRATCHPAD_NOTE_BYTES}-byte contribution per episode. "
+                f"Your seat may contribute at most {note_limits[seat.slot]} UTF-8 bytes, allowing for separators between seats. "
+                "Older notes may be compacted into a summary. "
+                "Invalid or oversized contributions are discarded.\n\n"
                 + final_observation(self.engine, seat.slot, seat.brain.notebook)
             )
             return await scratchpad_decision(seat.brain, self.transport, self.engine, observation, seat.note)
@@ -348,14 +367,13 @@ class Episode:
         for seat, reply in zip(self.seats, replies, strict=True):
             if reply is None:
                 continue
-            keys = [key for key in ("scratchpad", "scratchpad_append") if key in reply]
-            if len(keys) != 1 or not isinstance(reply[keys[0]], str):
+            if set(reply) != {"scratchpad_append"} or not isinstance(reply["scratchpad_append"], str):
+                continue
+            if len(reply["scratchpad_append"].encode("utf-8")) > note_limits[seat.slot]:
+                seat.note("scratchpad update exceeds seat contribution allowance")
                 continue
             try:
-                self.scratchpads.write(
-                    self.engine.policy_ids[seat.slot], seat.scratchpad, reply[keys[0]],
-                    append=keys[0] == "scratchpad_append",
-                )
+                self.scratchpads.append(self.engine.policy_ids[seat.slot], reply["scratchpad_append"])
                 seat.note("scratchpad saved")
             except (OSError, ValueError) as error:
                 seat.note(f"scratchpad update failed: {error}")
@@ -366,14 +384,18 @@ class Episode:
             f"lake capacity {self.engine.lake.capacity:.0f} (hidden from seats), transport "
             f"{self.transport.describe if self.transport else 'none (scripted seats only)'}"
         )
-        await self.read_scratchpads()
+        if self.scratchpads is not None:
+            await self.read_scratchpads()
         while not self.engine.finished:
             if self.engine.commune_due():
                 await self.hold_council()
             await self.fishing_turn()
-        await self.write_scratchpads()
+        if self.scratchpads is not None:
+            await self.write_scratchpads()
         self.phase = "done"
         self.finalize()
+        if isinstance(self.scratchpads, HostedScratchpadStore):
+            await asyncio.to_thread(self.scratchpads.flush)
         await self.broadcast({"type": "end", "scores": self.engine.results()["scores"]})
         self.done.set()
 
@@ -561,8 +583,8 @@ def main_coworld() -> int:
     replay_uri = os.environ.get("COGAME_LOAD_REPLAY_URI", "").strip()
     if replay_uri:
         return asyncio.run(serve_replay(replay_uri, host, port))
-    if not os.environ.get("OVERFISHED_SCRATCHPAD_DIR"):
-        raise RuntimeError("hosted episodes require OVERFISHED_SCRATCHPAD_DIR on a durable shared volume")
+    if ("COGAME_MEMORY_INPUT_URI" in os.environ) != ("COGAME_MEMORY_OUTPUT_URI" in os.environ):
+        raise RuntimeError("hosted memory requires both input and output URIs")
     config = load_config(os.environ["COGAME_CONFIG_URI"])
     document = load_seats(os.environ["COGAME_PLAYER_SEATS_URI"])
     workdir = local_path(os.environ["COGAME_RESULTS_URI"]).parent
