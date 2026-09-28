@@ -17,10 +17,10 @@ def test_store_limits_and_concurrent_updates(tmp_path):
     store.append(key, "b")
     assert store.read(key) == "ab"
     for _ in range(25):
-        store.append(key, "é" * 1024)
-    assert len(store.read(key).encode()) == 20 * 2048
-    with pytest.raises(ValueError, match="2048"):
-        store.append(key, "é" * 1025)
+        store.append(key, "é" * 8192)
+    assert len(store.read(key).encode()) == 20 * 16384
+    with pytest.raises(ValueError, match="16384"):
+        store.append(key, "é" * 8193)
     assert store.read(policy_id(b"another soul")) == ""
 
 
@@ -289,9 +289,9 @@ async def test_hosted_episode_without_opt_in_has_no_memory_prompts_or_calls(tmp_
 def test_hosted_snapshot_byte_limit():
     key = policy_id(b"a soul")
     data = {"protocol": "append-v1", "namespace": "league", "policies": {
-        key: {"summary": "x" * (SCRATCHPAD_MAX_BYTES - 2048), "notes": ["é" * 1024]}
+        key: {"summary": "x" * (SCRATCHPAD_MAX_BYTES - 16384), "notes": ["é" * 8192]}
     }}
-    assert MemoryInput.model_validate(data).policies[key].notes == ["é" * 1024]
+    assert MemoryInput.model_validate(data).policies[key].notes == ["é" * 8192]
     data["policies"][key]["summary"] += "x"
     with pytest.raises(ValueError, match="512 KiB"):
         MemoryInput.model_validate(data)

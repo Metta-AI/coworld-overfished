@@ -343,7 +343,7 @@ class Episode:
             observation = (
                 "SCRATCHPAD WRITE. The episode is over. This is your one optional scratchpad update. "
                 "Reply with {\"scratchpad_append\": \"<new notes>\"}, or {} to leave memory unchanged. "
-                "Your contribution may contain at most 2048 UTF-8 bytes. Older notes may be compacted into a summary. "
+                "Your contribution may contain at most 16384 UTF-8 bytes. Older notes may be compacted into a summary. "
                 "Invalid or oversized contributions are discarded.\n\n"
                 + final_observation(self.engine, seat.slot, seat.brain.notebook)
             )

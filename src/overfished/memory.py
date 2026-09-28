@@ -13,7 +13,7 @@ from urllib.parse import urlparse
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 SCRATCHPAD_MAX_BYTES = 512 * 1024
-SCRATCHPAD_NOTE_BYTES = 2048
+SCRATCHPAD_NOTE_BYTES = 16384
 
 
 def policy_id(data: bytes) -> str:
@@ -39,7 +39,7 @@ class ScratchpadStore:
             return ""
         with path.open("rb") as handle:
             fcntl.flock(handle, fcntl.LOCK_SH)
-            # JSON escaping can expand a 2 KiB contribution sixfold. Read a bounded tail.
+            # JSON escaping can expand a 16 KiB contribution sixfold. Read a bounded tail.
             start = max(0, path.stat().st_size - 20 * (6 * SCRATCHPAD_NOTE_BYTES + 3))
             handle.seek(start)
             if start:
@@ -57,7 +57,7 @@ class ScratchpadStore:
 
     def append(self, identifier: str, text: str) -> None:
         if len(text.encode("utf-8")) > SCRATCHPAD_NOTE_BYTES:
-            raise ValueError("episode memory contribution exceeds 2048 UTF-8 bytes")
+            raise ValueError("episode memory contribution exceeds 16384 UTF-8 bytes")
         fd = os.open(self._path(identifier), os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
         with os.fdopen(fd, "a", encoding="utf-8") as handle:
             fcntl.flock(handle, fcntl.LOCK_EX)
@@ -103,8 +103,8 @@ class HostedScratchpadStore:
             raise ValueError("policy is absent from episode memory snapshot")
         previous = self.notes[identifier] if identifier in self.notes else ""
         combined = previous + text
-        if len(combined.encode("utf-8")) > 2048:
-            raise ValueError("episode memory contribution exceeds 2048 UTF-8 bytes")
+        if len(combined.encode("utf-8")) > 16384:
+            raise ValueError("episode memory contribution exceeds 16384 UTF-8 bytes")
         self.notes[identifier] = combined
 
     def flush(self) -> None:

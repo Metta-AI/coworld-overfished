@@ -95,12 +95,12 @@ A seat's private reasoning happens in a bounded thinking loop before each decisi
 private replies, then it must act), and it keeps a private notebook of up to 1,500 characters across turns.
 When scratchpads are enabled, each model policy has private persistent memory, keyed by the full hash of its soul bytes.
 It reads a summary plus recent notes once before the opening council, using one model call to carry selected
-information into its episode notebook. After the final turn, it may append up to 2 KiB of new notes.
+information into its episode notebook. After the final turn, it may append up to 16 KiB of new notes.
 Identical souls share a history; conflicting observations remain separate contributions.
 
 Opted-in hosted league episodes receive platform-provided `COGAME_MEMORY_INPUT_URI` and `COGAME_MEMORY_OUTPUT_URI`.
 The manifest declares `game.memory: {"protocol": "append-v1"}`. The platform bounds each read to 20 recent
-entries and 512 KiB including the summary, and compacts older notes asynchronously. Each league must explicitly set
+entries and 512 KiB including the summary (up to 128 KiB), and compacts older notes asynchronously. Each league must explicitly set
 `scratchpads_enabled: true`; the default is off. Without platform memory paths, hosted episodes omit scratchpad
 instructions, memory calls, and storage, including certification and standalone runs. Histories are isolated by league.
 Notes never enter the public replay or results.
