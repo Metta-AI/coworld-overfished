@@ -35,7 +35,13 @@ from overfished.llm import (
     transport_from_env,
     turn_observation,
 )
-from overfished.memory import HostedScratchpadStore, ScratchpadStore, policy_id
+from overfished.memory import (
+    SCRATCHPAD_NOTE_BYTES,
+    HostedScratchpadStore,
+    MemoryView,
+    ScratchpadStore,
+    policy_id,
+)
 from overfished.scripted import SCRIPTED_NAMES, ScriptedPolicy, fallback_action, scripted_policy
 from overfished.seats import (
     SeatLog,
@@ -62,7 +68,7 @@ class SeatRuntime:
     log: SeatLog
     scripted: ScriptedPolicy | None
     brain: SeatBrain | None
-    scratchpad: str = ""
+    scratchpad: MemoryView = field(default_factory=lambda: MemoryView(summary="", notes=[]))
     scratchpad_loaded: bool = False
 
     def note(self, line: str) -> None:
@@ -321,7 +327,9 @@ class Episode:
                 + self.engine.pseudonyms[seat.slot] + ".\n" + policy_roster(self.engine)
                 + "\nThis is your one read of your private scratchpad. You may carry notes into your episode notebook. "
                 + f"Reply with {{\"notebook\": \"<up to {self.config.llm.notebook_max_chars} characters>\"}}."
-                + "\nScratchpad (JSON string):\n" + json.dumps(seat.scratchpad, ensure_ascii=False)
+                + "\nCompacted summary:\n" + seat.scratchpad.summary
+                + "\nRecent notes (oldest first, newest last):\n"
+                + "\n\n".join(f"Note {index}:\n{note}" for index, note in enumerate(seat.scratchpad.notes, 1))
             )
             reply = await scratchpad_decision(seat.brain, self.transport, self.engine, observation, seat.note)
             if reply is not None and isinstance(reply.get("notebook"), str):
@@ -333,6 +341,10 @@ class Episode:
     async def write_scratchpads(self) -> None:
         assert self.scratchpads is not None
         self.phase = "scratchpad_write"
+        note_limits = {}
+        for seat in self.seats:
+            shared_seats = self.engine.policy_ids.count(self.engine.policy_ids[seat.slot])
+            note_limits[seat.slot] = (SCRATCHPAD_NOTE_BYTES - (shared_seats - 1)) // shared_seats
 
         async def prepare(seat: SeatRuntime) -> dict | None:
             if (
@@ -343,7 +355,9 @@ class Episode:
             observation = (
                 "SCRATCHPAD WRITE. The episode is over. This is your one optional scratchpad update. "
                 "Reply with {\"scratchpad_append\": \"<new notes>\"}, or {} to leave memory unchanged. "
-                "Your contribution may contain at most 16384 UTF-8 bytes. Older notes may be compacted into a summary. "
+                f"Identical souls share one {SCRATCHPAD_NOTE_BYTES}-byte contribution per episode. "
+                f"Your seat may contribute at most {note_limits[seat.slot]} UTF-8 bytes, allowing for separators between seats. "
+                "Older notes may be compacted into a summary. "
                 "Invalid or oversized contributions are discarded.\n\n"
                 + final_observation(self.engine, seat.slot, seat.brain.notebook)
             )
@@ -354,6 +368,9 @@ class Episode:
             if reply is None:
                 continue
             if set(reply) != {"scratchpad_append"} or not isinstance(reply["scratchpad_append"], str):
+                continue
+            if len(reply["scratchpad_append"].encode("utf-8")) > note_limits[seat.slot]:
+                seat.note("scratchpad update exceeds seat contribution allowance")
                 continue
             try:
                 self.scratchpads.append(self.engine.policy_ids[seat.slot], reply["scratchpad_append"])
@@ -375,10 +392,10 @@ class Episode:
             await self.fishing_turn()
         if self.scratchpads is not None:
             await self.write_scratchpads()
-        if isinstance(self.scratchpads, HostedScratchpadStore):
-            await asyncio.to_thread(self.scratchpads.flush)
         self.phase = "done"
         self.finalize()
+        if isinstance(self.scratchpads, HostedScratchpadStore):
+            await asyncio.to_thread(self.scratchpads.flush)
         await self.broadcast({"type": "end", "scores": self.engine.results()["scores"]})
         self.done.set()
 

@@ -33,10 +33,10 @@ class ScratchpadStore:
             raise ValueError("scratchpad key must be a SHA-256 policy identifier")
         return self.root / (digest + ".jsonl")
 
-    def read(self, identifier: str) -> str:
+    def read(self, identifier: str) -> MemoryView:
         path = self._path(identifier)
         if not path.exists():
-            return ""
+            return MemoryView(summary="", notes=[])
         with path.open("rb") as handle:
             fcntl.flock(handle, fcntl.LOCK_SH)
             # JSON escaping can expand a 16 KiB contribution sixfold. Read a bounded tail.
@@ -53,7 +53,7 @@ class ScratchpadStore:
                 break
             selected.append(note)
             remaining -= size
-        return "".join(reversed(selected))
+        return MemoryView(summary="", notes=list(reversed(selected)))
 
     def append(self, identifier: str, text: str) -> None:
         if len(text.encode("utf-8")) > SCRATCHPAD_NOTE_BYTES:
@@ -94,16 +94,14 @@ class HostedScratchpadStore:
         self.output_uri = output_uri
         self.notes: dict[str, str] = {}
 
-    def read(self, identifier: str) -> str:
-        view = self.snapshot.policies[identifier]
-        return json.dumps(view.model_dump(), ensure_ascii=False)
+    def read(self, identifier: str) -> MemoryView:
+        return self.snapshot.policies[identifier]
 
     def append(self, identifier: str, text: str) -> None:
         if identifier not in self.snapshot.policies:
             raise ValueError("policy is absent from episode memory snapshot")
-        previous = self.notes[identifier] if identifier in self.notes else ""
-        combined = previous + text
-        if len(combined.encode("utf-8")) > 16384:
+        combined = "\n".join([self.notes[identifier], text]) if identifier in self.notes else text
+        if len(combined.encode("utf-8")) > SCRATCHPAD_NOTE_BYTES:
             raise ValueError("episode memory contribution exceeds 16384 UTF-8 bytes")
         self.notes[identifier] = combined
 

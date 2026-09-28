@@ -5,23 +5,23 @@ from test_episode import SOULS, VILLAGER, config_for
 
 from overfished.__main__ import stage_local_episode
 from overfished.llm import Transport
-from overfished.memory import SCRATCHPAD_MAX_BYTES, MemoryInput, ScratchpadStore, policy_id
+from overfished.memory import SCRATCHPAD_MAX_BYTES, MemoryInput, MemoryView, ScratchpadStore, policy_id
 from overfished.server import Episode, load_seats
 
 
 def test_store_limits_and_concurrent_updates(tmp_path):
     store = ScratchpadStore(tmp_path)
     key = policy_id(b"a soul")
-    assert store.read(key) == ""
+    assert store.read(key) == MemoryView(summary="", notes=[])
     store.append(key, "a")
     store.append(key, "b")
-    assert store.read(key) == "ab"
+    assert store.read(key) == MemoryView(summary="", notes=["a", "b"])
     for _ in range(25):
         store.append(key, "é" * 8192)
-    assert len(store.read(key).encode()) == 20 * 16384
+    assert sum(len(note.encode()) for note in store.read(key).notes) == 20 * 16384
     with pytest.raises(ValueError, match="16384"):
         store.append(key, "é" * 8193)
-    assert store.read(policy_id(b"another soul")) == ""
+    assert store.read(policy_id(b"another soul")) == MemoryView(summary="", notes=[])
 
 
 class MemoryTransport(Transport):
@@ -73,7 +73,7 @@ async def test_memory_across_episodes_and_roster_before_opening_council(tmp_path
     assert all("private previous episode note" not in p for p in second.observations[1:])
     assert all(key in p for p in second.observations)
     assert "remembered privately" in second.observations[1]
-    assert ScratchpadStore(memory).read(key) == "private previous episode note\nnext note"
+    assert ScratchpadStore(memory).read(key).notes == ["private previous episode note", "\nnext note"]
     for artifact in ("replay", "results.json"):
         public = (tmp_path / "two" / artifact).read_text()
         assert key in public
@@ -92,7 +92,7 @@ async def test_invalid_or_absent_update_preserves_memory(tmp_path, update):
     await make_episode(
         tmp_path / "episode", store.root, [VILLAGER, SOULS / "steady.md"], MemoryTransport(update), 7
     )
-    assert store.read(key) == "original"
+    assert store.read(key).notes == ["original"]
 
 
 async def test_cli_memory_survives_process_restart(tmp_path, unused_tcp_port, monkeypatch):
@@ -151,8 +151,7 @@ async def test_cli_memory_survives_process_restart(tmp_path, unused_tcp_port, mo
                             "namespace": "test",
                             "policies": {
                                 policy_id(soul.read_bytes()): {
-                                    "summary": ScratchpadStore(memory).read(policy_id(soul.read_bytes())),
-                                    "notes": [],
+                                    **ScratchpadStore(memory).read(policy_id(soul.read_bytes())).model_dump(),
                                 }
                                 for soul in souls
                             },
@@ -222,7 +221,7 @@ async def test_cli_memory_survives_process_restart(tmp_path, unused_tcp_port, mo
     assert [slot for slot, _ in reads] == ["0", "1"]
     assert "private durable note" not in reads[0][1]
     assert "private durable note" in reads[1][1]
-    assert ScratchpadStore(memory).read(policy_id(VILLAGER.read_bytes())) == "private durable note\n" * 2
+    assert ScratchpadStore(memory).read(policy_id(VILLAGER.read_bytes())).notes == ["private durable note\n"] * 2
 
 
 def _append_in_process(root, key, index):
@@ -239,7 +238,7 @@ def test_concurrent_processes_do_not_lose_appends(tmp_path):
         futures = [executor.submit(_append_in_process, tmp_path, key, index) for index in range(16)]
         for future in futures:
             future.result(timeout=15)
-    assert sorted(map(int, ScratchpadStore(tmp_path).read(key).splitlines())) == list(range(16))
+    assert sorted(map(int, ScratchpadStore(tmp_path).read(key).notes)) == list(range(16))
 
 
 @pytest.mark.parametrize("error", ["transport", "timeout", "invalid"])
@@ -268,7 +267,7 @@ async def test_failed_boundary_calls_preserve_memory(tmp_path, error):
         config, 7, load_seats(path.as_uri()), FailingTransport({}), artifacts, store.root
     )
     await episode.run()
-    assert store.read(key) == "original"
+    assert store.read(key).notes == ["original"]
     assert episode.done.is_set()
 
 
@@ -295,3 +294,61 @@ def test_hosted_snapshot_byte_limit():
     data["policies"][key]["summary"] += "x"
     with pytest.raises(ValueError, match="512 KiB"):
         MemoryInput.model_validate(data)
+
+
+@pytest.mark.parametrize("hosted", [False, True])
+async def test_memory_view_renders_unescaped_summary_and_separate_notes(tmp_path, monkeypatch, hosted):
+    key = policy_id(VILLAGER.read_bytes())
+    notes = ['a "quoted" lesson\nsecond line', "newest lesson"]
+    summary = 'Earlier "summary"\nwith context' if hosted else ""
+    memory = tmp_path / "memory"
+    if hosted:
+        source = tmp_path / "input.json"
+        source.write_text(json.dumps({"protocol": "append-v1", "namespace": "test", "policies": {
+            key: {"summary": summary, "notes": notes},
+        }}))
+        monkeypatch.setenv("COGAME_MEMORY_INPUT_URI", source.as_uri())
+        monkeypatch.setenv("COGAME_MEMORY_OUTPUT_URI", (tmp_path / "output.json").as_uri())
+    else:
+        store = ScratchpadStore(memory)
+        for note in notes:
+            store.append(key, note)
+    transport = MemoryTransport({})
+    episode = await make_episode(tmp_path / "episode", memory, [VILLAGER, SOULS / "steady.md"], transport, 7)
+    observation = transport.observations[0]
+    assert f"Compacted summary:\n{summary}\nRecent notes (oldest first, newest last):\n" in observation
+    assert 'Note 1:\na "quoted" lesson\nsecond line\n\nNote 2:\nnewest lesson' in observation
+    assert "compacted summary followed by up to 20 recent notes" in episode.seats[0].brain.system_prompt
+
+
+@pytest.mark.parametrize("oversized", [False, True])
+async def test_identical_souls_share_contribution_budget_with_separator(tmp_path, monkeypatch, oversized):
+    key = policy_id(VILLAGER.read_bytes())
+    source = tmp_path / "input.json"
+    source.write_text(json.dumps({"protocol": "append-v1", "namespace": "test", "policies": {
+        key: {"summary": "", "notes": []},
+    }}))
+    output = tmp_path / "output.json"
+    monkeypatch.setenv("COGAME_MEMORY_INPUT_URI", source.as_uri())
+    monkeypatch.setenv("COGAME_MEMORY_OUTPUT_URI", output.as_uri())
+    note = "é" * 4095 + "x" + ("x" if oversized else "")
+    transport = MemoryTransport({"scratchpad_append": note})
+    await make_episode(tmp_path / "episode", None, [VILLAGER, VILLAGER], transport, 7)
+    writes = [text for text in transport.observations if text.startswith("SCRATCHPAD WRITE")]
+    assert len(writes) == 2
+    assert all("Your seat may contribute at most 8191 UTF-8 bytes" in text for text in writes)
+    assert json.loads(output.read_text())["notes"] == ({} if oversized else {key: note + "\n" + note})
+
+
+async def test_memory_flush_failure_preserves_episode_results(tmp_path, monkeypatch):
+    key = policy_id(VILLAGER.read_bytes())
+    source = tmp_path / "input.json"
+    source.write_text(json.dumps({"protocol": "append-v1", "namespace": "test", "policies": {
+        key: {"summary": "", "notes": []},
+    }}))
+    monkeypatch.setenv("COGAME_MEMORY_INPUT_URI", source.as_uri())
+    monkeypatch.setenv("COGAME_MEMORY_OUTPUT_URI", (tmp_path / "missing" / "output.json").as_uri())
+    with pytest.raises(FileNotFoundError):
+        await make_episode(tmp_path / "episode", None, [VILLAGER, SOULS / "steady.md"], MemoryTransport({}), 7)
+    assert len(json.loads((tmp_path / "episode" / "results.json").read_text())["scores"]) == 2
+    assert (tmp_path / "episode" / "replay").exists()
