@@ -84,7 +84,7 @@ class Episode:
     transport: Transport | None
     artifacts: ArtifactPaths
     status_uri: str | None
-    scratchpads: ScratchpadStore | HostedScratchpadStore
+    scratchpads: ScratchpadStore | HostedScratchpadStore | None
     started: float = field(default_factory=time.monotonic)
     phase: str = "starting"
     subscribers: set[web.WebSocketResponse] = field(default_factory=set)
@@ -105,12 +105,11 @@ class Episode:
     ) -> "Episode":
         if len(document.seats) != config.num_players:
             raise ValueError(f"seats document has {len(document.seats)} seats but the config seats {config.num_players}")
-        scratchpad_dir = scratchpad_dir or Path(os.environ.get("OVERFISHED_SCRATCHPAD_DIR", "runs/scratchpads"))
-        scratchpads = (
-            HostedScratchpadStore(os.environ["COGAME_MEMORY_INPUT_URI"], os.environ["COGAME_MEMORY_OUTPUT_URI"])
-            if "COGAME_MEMORY_INPUT_URI" in os.environ
-            else ScratchpadStore(scratchpad_dir)
-        )
+        scratchpads: ScratchpadStore | HostedScratchpadStore | None = None
+        if "COGAME_MEMORY_INPUT_URI" in os.environ:
+            scratchpads = HostedScratchpadStore(os.environ["COGAME_MEMORY_INPUT_URI"], os.environ["COGAME_MEMORY_OUTPUT_URI"])
+        elif "COGAME_CONFIG_URI" not in os.environ and (scratchpad_dir is not None or "OVERFISHED_SCRATCHPAD_DIR" in os.environ):
+            scratchpads = ScratchpadStore(scratchpad_dir or Path(os.environ["OVERFISHED_SCRATCHPAD_DIR"]))
         soul_data = [read_uri(seat.file_uri) for seat in document.seats]
         engine = Engine(config, seed, [policy_id(data) for data in soul_data])
         seats: list[SeatRuntime] = []
@@ -140,7 +139,7 @@ class Episode:
                     soul=soul,
                     system_prompt=soul.text
                     + "\n\n"
-                    + mechanics_block(config, engine.pseudonyms[seat.slot], config.num_players, engine.lake.boat_capacity, persistent_memory=True),
+                    + mechanics_block(config, engine.pseudonyms[seat.slot], config.num_players, engine.lake.boat_capacity, persistent_memory=scratchpads is not None),
                 )
             runtime = SeatRuntime(slot=seat.slot, soul=soul, log=seat_log, scripted=scripted, brain=brain)
             runtime.note(
@@ -190,7 +189,7 @@ class Episode:
 
     def think_turns_now(self, *, reserve_scratchpad: bool = True) -> int:
         remaining = self.config.episode_wall_seconds - (time.monotonic() - self.started)
-        if reserve_scratchpad:
+        if reserve_scratchpad and self.scratchpads is not None:
             remaining -= self.config.llm.decision_seconds
         if remaining <= 0:
             return -1
@@ -303,6 +302,7 @@ class Episode:
         await self.broadcast({"type": "turn", "turn": record.model_dump()})
 
     async def read_scratchpads(self) -> None:
+        assert self.scratchpads is not None
         self.phase = "scratchpad_read"
 
         async def read(seat: SeatRuntime) -> None:
@@ -331,6 +331,7 @@ class Episode:
         await asyncio.gather(*(read(seat) for seat in self.seats))
 
     async def write_scratchpads(self) -> None:
+        assert self.scratchpads is not None
         self.phase = "scratchpad_write"
 
         async def prepare(seat: SeatRuntime) -> dict | None:
@@ -366,12 +367,14 @@ class Episode:
             f"lake capacity {self.engine.lake.capacity:.0f} (hidden from seats), transport "
             f"{self.transport.describe if self.transport else 'none (scripted seats only)'}"
         )
-        await self.read_scratchpads()
+        if self.scratchpads is not None:
+            await self.read_scratchpads()
         while not self.engine.finished:
             if self.engine.commune_due():
                 await self.hold_council()
             await self.fishing_turn()
-        await self.write_scratchpads()
+        if self.scratchpads is not None:
+            await self.write_scratchpads()
         if isinstance(self.scratchpads, HostedScratchpadStore):
             await asyncio.to_thread(self.scratchpads.flush)
         self.phase = "done"
@@ -563,8 +566,8 @@ def main_coworld() -> int:
     replay_uri = os.environ.get("COGAME_LOAD_REPLAY_URI", "").strip()
     if replay_uri:
         return asyncio.run(serve_replay(replay_uri, host, port))
-    if not os.environ.get("COGAME_MEMORY_INPUT_URI") or not os.environ.get("COGAME_MEMORY_OUTPUT_URI"):
-        raise RuntimeError("hosted episodes require platform memory input and output URIs")
+    if ("COGAME_MEMORY_INPUT_URI" in os.environ) != ("COGAME_MEMORY_OUTPUT_URI" in os.environ):
+        raise RuntimeError("hosted memory requires both input and output URIs")
     config = load_config(os.environ["COGAME_CONFIG_URI"])
     document = load_seats(os.environ["COGAME_PLAYER_SEATS_URI"])
     workdir = local_path(os.environ["COGAME_RESULTS_URI"]).parent

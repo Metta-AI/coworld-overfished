@@ -270,3 +270,17 @@ async def test_failed_boundary_calls_preserve_memory(tmp_path, error):
     await episode.run()
     assert store.read(key) == "original"
     assert episode.done.is_set()
+
+
+async def test_hosted_episode_without_opt_in_has_no_memory_prompts_or_calls(tmp_path, monkeypatch):
+    monkeypatch.setenv("COGAME_CONFIG_URI", "file:///hosted-config.json")
+    monkeypatch.setenv("OVERFISHED_SCRATCHPAD_DIR", str(tmp_path / "ignored-local-memory"))
+    monkeypatch.delenv("COGAME_MEMORY_INPUT_URI", raising=False)
+    monkeypatch.delenv("COGAME_MEMORY_OUTPUT_URI", raising=False)
+    transport = MemoryTransport({"scratchpad_append": "must not be written"})
+    episode = await make_episode(tmp_path / "episode", tmp_path / "ignored-explicit-memory", [VILLAGER, SOULS / "steady.md"], transport, 7)
+    assert episode.scratchpads is None
+    assert not any("SCRATCHPAD" in observation for observation in transport.observations)
+    assert not any("SCRATCHPAD" in seat.brain.system_prompt for seat in episode.seats if seat.brain is not None)
+    assert not (tmp_path / "ignored-local-memory").exists()
+    assert not (tmp_path / "ignored-explicit-memory").exists()
