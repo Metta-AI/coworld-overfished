@@ -60,7 +60,8 @@ Only the mechanics block: the episode length as a range, never the draw; score (
 within an episode counts for nothing), the lake (hidden, regrows, has a capacity and a point of no return,
 differs every episode), fishing (effort 0 to 1, the boat's full-lake catch for this episode, catches public,
 efforts private), punishment (the burn ratio, visibility), the council procedure, privacy, and the reply
-format, stable policy hashes, and private cross-episode scratchpads. No strategy and no vocabulary of coalitions, quotas, promises or threats is supplied.
+format and stable policy hashes. When memory is enabled, it also describes private cross-episode scratchpads.
+No strategy and no vocabulary of coalitions, quotas, promises or threats is supplied.
 
 ## What a seat sees
 
@@ -154,28 +155,29 @@ and the reasons for any retry or fallback. Hosted logs truncate at 10 MiB; a 60-
 
 ## Persistent scratchpads
 
-Each model policy gets one private read before the opening council (or before fishing when councils are
-disabled) and one optional private write after the last fishing turn. The read call receives the whole saved
-scratchpad and public policy roster, then returns `{"notebook": "notes for this episode"}`. The notebook's
-existing character limit still applies; the scratchpad is not supplied again during play or at the final write.
+When memory is enabled, each model policy gets one private read before the opening council (or before fishing
+when councils are disabled) and one optional private append after the last fishing turn. The read contains a
+compacted summary followed by up to 20 recent notes, oldest first, plus the public policy roster. The policy
+returns `{"notebook": "notes for this episode"}`; the notebook's existing character limit applies. The
+scratchpad is not supplied again during play or at the final write. Notes may be outdated or contradictory.
+
 The final call sees the final holdings, recent public history, roster, and current private notebook. It returns
-`{"scratchpad": "replacement"}`, `{"scratchpad_append": "text to append"}`, or `{}` to make no change. An empty
-replacement clears the scratchpad. Fishing and council replies cannot modify persistent memory.
+`{"scratchpad_append": "new notes"}` or `{}` to make no change. Each policy may contribute at most 16,384 UTF-8
+bytes per episode, shared across identical souls seated together. Fishing and council replies cannot modify
+persistent memory. There is one model call per boundary with no retry; failures, invalid replies, and oversized
+contributions add no note. The game reserves one decision budget for the final write; a completely exhausted
+wall budget skips model calls. Scripted baselines do not use scratchpads.
 
-The cap is 1,000,000 UTF-8 bytes, enforced on the resulting text. There is one model call per boundary with no
-retry; model context and output limits still apply. Appends allow memory to grow without rewriting it all in
-one response. Failures, invalid replies, and oversized updates retain the previous contents. The game reserves
-one decision budget for the final write; a completely exhausted wall budget skips model calls. Scripted
-baselines do not use scratchpads.
+The manifest declares `game.memory: {"protocol": "append-v1"}`. Hosted scratchpads are available only when
+the league enables `scratchpads_enabled` and the platform supplies both `COGAME_MEMORY_INPUT_URI` and
+`COGAME_MEMORY_OUTPUT_URI`. Certification and standalone hosted episodes run without memory calls or instructions.
+The platform stores history privately per league, provides at most 512 KiB per policy on each read (including a
+summary of at most 128 KiB), and compacts older notes asynchronously. Memory never enters public artifacts.
 
-Scratchpads are stored privately under `--scratchpad-dir` (local default `runs/scratchpads`) or
-`OVERFISHED_SCRATCHPAD_DIR`. Use a distinct directory for each pool or experiment. Hosted startup requires
-that environment variable and a durable shared filesystem mounted by the runner; an episode-local directory
-cannot persist across pods. No hosted volume or platform persistence API is provisioned by this game.
-
-Writes are locked and atomic. Concurrent episodes and duplicate seats read their own starting snapshots;
-appends merge, while a replacement is rejected if another write changed the stored text since that snapshot.
-Within an episode writes commit in slot order. Scratchpad contents are never added to public artifacts.
+Local runs use an append-only history under `--scratchpad-dir` (default `runs/scratchpads`), or
+`OVERFISHED_SCRATCHPAD_DIR`. Use a distinct directory for each pool or experiment. Local reads have the same
+note and byte bounds but no automatic compaction. Concurrent appends are locked, and duplicate seats share a
+single contribution budget.
 
 The headless training bridge has no soul-file roster or persistent scratchpad interface; it does not advertise
 these memory mechanics. Its replay policy tags retain the existing display-name hashes.
