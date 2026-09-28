@@ -100,7 +100,7 @@ Identical souls share a history; conflicting observations remain separate contri
 
 Opted-in hosted league episodes receive platform-provided `COGAME_MEMORY_INPUT_URI` and `COGAME_MEMORY_OUTPUT_URI`.
 The manifest declares `game.memory: {"protocol": "append-v1"}`. The platform bounds each read to 20 recent
-entries and 32 KiB including the summary, and compacts older notes asynchronously. Each league must explicitly set
+entries and 512 KiB including the summary, and compacts older notes asynchronously. Each league must explicitly set
 `scratchpads_enabled: true`; the default is off. Without platform memory paths, hosted episodes omit scratchpad
 instructions, memory calls, and storage, including certification and standalone runs. Histories are isolated by league.
 Notes never enter the public replay or results.

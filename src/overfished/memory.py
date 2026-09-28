@@ -12,7 +12,7 @@ from urllib.parse import urlparse
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-SCRATCHPAD_MAX_BYTES = 32768
+SCRATCHPAD_MAX_BYTES = 512 * 1024
 SCRATCHPAD_NOTE_BYTES = 2048
 
 
@@ -81,8 +81,8 @@ class MemoryInput(BaseModel):
     @classmethod
     def bounded_views(cls, policies: dict[str, MemoryView]) -> dict[str, MemoryView]:
         for view in policies.values():
-            if sum(len(text.encode()) for text in [view.summary, *view.notes]) > 32768:
-                raise ValueError("memory input exceeds 32 KiB per policy")
+            if sum(len(text.encode()) for text in [view.summary, *view.notes]) > SCRATCHPAD_MAX_BYTES:
+                raise ValueError("memory input exceeds 512 KiB per policy")
         return policies
 
 

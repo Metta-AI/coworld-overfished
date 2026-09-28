@@ -5,7 +5,7 @@ from test_episode import SOULS, VILLAGER, config_for
 
 from overfished.__main__ import stage_local_episode
 from overfished.llm import Transport
-from overfished.memory import SCRATCHPAD_MAX_BYTES, ScratchpadStore, policy_id
+from overfished.memory import SCRATCHPAD_MAX_BYTES, MemoryInput, ScratchpadStore, policy_id
 from overfished.server import Episode, load_seats
 
 
@@ -18,7 +18,7 @@ def test_store_limits_and_concurrent_updates(tmp_path):
     assert store.read(key) == "ab"
     for _ in range(25):
         store.append(key, "é" * 1024)
-    assert len(store.read(key).encode()) == SCRATCHPAD_MAX_BYTES
+    assert len(store.read(key).encode()) == 20 * 2048
     with pytest.raises(ValueError, match="2048"):
         store.append(key, "é" * 1025)
     assert store.read(policy_id(b"another soul")) == ""
@@ -284,3 +284,14 @@ async def test_hosted_episode_without_opt_in_has_no_memory_prompts_or_calls(tmp_
     assert not any("SCRATCHPAD" in seat.brain.system_prompt for seat in episode.seats if seat.brain is not None)
     assert not (tmp_path / "ignored-local-memory").exists()
     assert not (tmp_path / "ignored-explicit-memory").exists()
+
+
+def test_hosted_snapshot_byte_limit():
+    key = policy_id(b"a soul")
+    data = {"protocol": "append-v1", "namespace": "league", "policies": {
+        key: {"summary": "x" * (SCRATCHPAD_MAX_BYTES - 2048), "notes": ["é" * 1024]}
+    }}
+    assert MemoryInput.model_validate(data).policies[key].notes == ["é" * 1024]
+    data["policies"][key]["summary"] += "x"
+    with pytest.raises(ValueError, match="512 KiB"):
+        MemoryInput.model_validate(data)
