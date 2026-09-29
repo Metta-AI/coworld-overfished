@@ -216,7 +216,7 @@ uvx --from "$COWORLD_CLI" coworld certify dist/coworld_manifest.json
 Each push to `main` runs [Upload Overfished](.github/workflows/upload-coworld.yml). It allocates the next
 registry version (`0.1.10` after hosted `0.1.9`), builds the image and manifest, uploads it,
 waits for hosted certification, and verifies canonical promotion. The workflow needs two repository Actions
-secrets: `SOFTMAX_API_KEY` containing a Softmax team token, and `METTA_READ_TOKEN` with read-only access to
+secrets: `SOFTMAX_API_KEY` containing a Softmax team token, and `METTA_READ_SSH_KEY` containing a read-only SSH deploy key for
 the private `Metta-AI/metta` repository for the memory-capable Coworld CLI. The package version in
 `pyproject.toml` is separate from the hosted Coworld version.
 

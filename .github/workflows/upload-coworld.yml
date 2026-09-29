@@ -23,12 +23,12 @@ jobs:
     steps:
       - name: Check upload credentials
         env:
-          METTA_READ_TOKEN: ${{ secrets.METTA_READ_TOKEN }}
+          METTA_READ_SSH_KEY: ${{ secrets.METTA_READ_SSH_KEY }}
           SOFTMAX_API_KEY: ${{ secrets.SOFTMAX_API_KEY }}
         run: |
           set -euo pipefail
-          if [ -z "$METTA_READ_TOKEN" ] || [ -z "$SOFTMAX_API_KEY" ]; then
-            echo "::error::METTA_READ_TOKEN (read access to Metta-AI/metta) and SOFTMAX_API_KEY (Softmax team token) repository secrets are required"
+          if [ -z "$METTA_READ_SSH_KEY" ] || [ -z "$SOFTMAX_API_KEY" ]; then
+            echo "::error::METTA_READ_SSH_KEY (read-only deploy key for Metta-AI/metta) and SOFTMAX_API_KEY (Softmax team token) repository secrets are required"
             exit 1
           fi
 
@@ -41,7 +41,7 @@ jobs:
           repository: Metta-AI/metta
           ref: df9f81e7e873806f562ab38b15b196bd9a3fe764
           path: metta-source
-          token: ${{ secrets.METTA_READ_TOKEN }}
+          ssh-key: ${{ secrets.METTA_READ_SSH_KEY }}
           persist-credentials: false
 
       - uses: actions/setup-python@v5
