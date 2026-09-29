@@ -14,16 +14,35 @@ permissions:
 
 env:
   COWORLD_NAME: overfished
-  # This Metta revision includes the append-v1 manifest schema. The separate
-  # coworld repository does not accept game.memory yet.
-  COWORLD_CLI: "coworld[auth] @ git+https://github.com/Metta-AI/metta.git@df9f81e7e873806f562ab38b15b196bd9a3fe764#subdirectory=packages/coworld"
+  COWORLD_CLI: ./metta-source/packages/coworld
 
 jobs:
   upload:
     runs-on: ubuntu-latest
     timeout-minutes: 90
     steps:
+      - name: Check upload credentials
+        env:
+          METTA_READ_TOKEN: ${{ secrets.METTA_READ_TOKEN }}
+          SOFTMAX_API_KEY: ${{ secrets.SOFTMAX_API_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -z "$METTA_READ_TOKEN" ] || [ -z "$SOFTMAX_API_KEY" ]; then
+            echo "::error::METTA_READ_TOKEN (read access to Metta-AI/metta) and SOFTMAX_API_KEY (Softmax team token) repository secrets are required"
+            exit 1
+          fi
+
       - uses: actions/checkout@v4
+
+      # This Metta revision accepts game.memory: append-v1. The separate
+      # public Coworld repository does not accept that declaration yet.
+      - uses: actions/checkout@v4
+        with:
+          repository: Metta-AI/metta
+          ref: df9f81e7e873806f562ab38b15b196bd9a3fe764
+          path: metta-source
+          token: ${{ secrets.METTA_READ_TOKEN }}
+          persist-credentials: false
 
       - uses: actions/setup-python@v5
         with:
