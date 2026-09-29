@@ -202,15 +202,22 @@ uv venv && uv pip install -e '.[test]'
   --soul souls/steady.md --soul souls/greedy.md --soul souls/enforcer.md --soul souls/steady.md
 ```
 
-Package and certify with the Coworld CLI (game-hosted support is on the `coworld` package's main branch):
+Package and certify with the same memory-capable Coworld CLI revision used by the upload workflow:
 
 ```bash
-uv run coworld build --project . --version 0.1.0
-uv run coworld run-episode dist/coworld_manifest.json                 # bundled scripted seats, no model calls
-uv run coworld run-episode dist/coworld_manifest.json --variant pond my_soul.md souls/examples/villager.md souls/steady.md souls/greedy.md
-uv run coworld certify dist/coworld_manifest.json
-uv run coworld upload-coworld dist/coworld_manifest.json --wait-certification
+COWORLD_CLI='coworld[auth] @ git+https://github.com/Metta-AI/metta.git@df9f81e7e873806f562ab38b15b196bd9a3fe764#subdirectory=packages/coworld'
+version="$(uvx --from "$COWORLD_CLI" coworld next-version overfished)"
+uvx --from "$COWORLD_CLI" coworld build --project . --version "$version"
+uvx --from "$COWORLD_CLI" coworld run-episode dist/coworld_manifest.json # bundled scripted seats, no model calls
+uvx --from "$COWORLD_CLI" coworld certify dist/coworld_manifest.json
+# Upload is handled on main by GitHub Actions.
 ```
+
+Each push to `main` runs [Upload Overfished](.github/workflows/upload-coworld.yml). It allocates the next
+registry version (`0.1.10` after hosted `0.1.9`), builds the image and manifest, uploads it,
+waits for hosted certification, and verifies canonical promotion. The workflow needs the repository Actions
+secret `SOFTMAX_API_KEY` containing a Softmax team token. The package version in `pyproject.toml` is separate
+from the hosted Coworld version.
 
 Layout: `src/overfished/` (engine, soul parsing, scripted baselines, LLM harness, server), `souls/` (the three
 bundled scripted players; `souls/examples/` holds model souls that are not bundled because certification runs

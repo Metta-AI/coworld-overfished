@@ -1,0 +1,95 @@
+name: Upload Overfished
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: upload-coworld
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  COWORLD_NAME: overfished
+  # This Metta revision includes the append-v1 manifest schema. The separate
+  # coworld repository does not accept game.memory yet.
+  COWORLD_CLI: "coworld[auth] @ git+https://github.com/Metta-AI/metta.git@df9f81e7e873806f562ab38b15b196bd9a3fe764#subdirectory=packages/coworld"
+
+jobs:
+  upload:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - uses: astral-sh/setup-uv@v6
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Install Coworld CLI
+        run: uvx --from "$COWORLD_CLI" coworld --help >/dev/null
+
+      - name: Set Softmax credentials
+        env:
+          SOFTMAX_API_KEY: ${{ secrets.SOFTMAX_API_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -z "$SOFTMAX_API_KEY" ]; then
+            echo "::error::SOFTMAX_API_KEY repository secret is required to upload Overfished"
+            exit 1
+          fi
+          uvx --from "$COWORLD_CLI" softmax set-token "$SOFTMAX_API_KEY" --server https://softmax.com/api
+          uv run --with "$COWORLD_CLI" python3 -c "from softmax.auth import clear_active_player_session; clear_active_player_session(server='https://softmax.com/api')"
+
+      - name: Allocate next version
+        id: version
+        run: |
+          set -euo pipefail
+          version="$(uvx --from "$COWORLD_CLI" coworld next-version "$COWORLD_NAME" --server https://softmax.com/api)"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "Building $COWORLD_NAME:$version"
+
+      - name: Build Coworld
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          uvx --from "$COWORLD_CLI" coworld build --project . --version "$VERSION"
+          python3 -c '
+          import json, os
+          with open("dist/coworld_manifest.json", encoding="utf-8") as manifest_file:
+              game = json.load(manifest_file)["game"]
+          if game["version"] != os.environ["VERSION"] or game.get("memory") != {"protocol": "append-v1"}:
+              raise SystemExit("::error::Built manifest has the wrong version or memory protocol")
+          '
+
+      - name: Upload and certify Coworld
+        run: |
+          set -euo pipefail
+          uvx --from "$COWORLD_CLI" coworld upload-coworld dist/coworld_manifest.json \
+            --server https://softmax.com/api \
+            --wait-certification \
+            --certification-timeout-seconds 3600
+
+      - name: Verify canonical version
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          uvx --from "$COWORLD_CLI" coworld list --json --limit 500 --server https://softmax.com/api | python3 -c '
+          import json, os, sys
+          data = json.load(sys.stdin)
+          rows = data["entries"] if isinstance(data, dict) else data
+          name, version = os.environ["COWORLD_NAME"], os.environ["VERSION"]
+          match = next((row for row in rows if row.get("name") == name and row.get("version") == version), None)
+          if match is None or not match.get("canonical"):
+              raise SystemExit(f"::error::{name}:{version} is not canonical after upload")
+          coworld_id = match["id"]
+          print(f"{name}:{version} is canonical ({coworld_id})")
+          '

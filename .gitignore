@@ -3,6 +3,7 @@ dist/
 build/
 coworld/
 runs/
+tmp/
 *.replay
 # python
 __pycache__/
