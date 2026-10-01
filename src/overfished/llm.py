@@ -2,7 +2,7 @@
 
 Transport is OpenAI-style chat completions over one of two bases:
 
-- hosted: the Softmax LLM sidecar on loopback (`AWS_ENDPOINT_URL_BEDROCK_RUNTIME`), which forwards to
+- hosted: the Softmax LLM sidecar on loopback (`COWORLD_LLM_ENDPOINT`), which forwards to
   OpenRouter and needs no auth header; `X-Coworld-Player-Slot` bills the call to the seat;
 - local: OpenRouter directly with `OPENROUTER_API_KEY`.
 """
@@ -97,7 +97,7 @@ class Transport:
 
 
 def transport_from_env(session: aiohttp.ClientSession, timeout_seconds: float) -> Transport | None:
-    sidecar = os.environ.get("AWS_ENDPOINT_URL_BEDROCK_RUNTIME", "").strip().rstrip("/")
+    sidecar = os.environ.get("COWORLD_LLM_ENDPOINT", "").strip().rstrip("/")
     if sidecar:
         return Transport(base_url=sidecar, api_key=None, timeout_seconds=timeout_seconds, session=session)
     key = os.environ.get("OPENROUTER_API_KEY", "").strip()
