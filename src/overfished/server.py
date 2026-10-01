@@ -138,7 +138,7 @@ class Episode:
                         other.close()
                     raise RuntimeError(
                         f"seat {seat.slot} needs model {soul.model} but no LLM transport is configured: set "
-                        "OPENROUTER_API_KEY locally, or run hosted where the sidecar provides AWS_ENDPOINT_URL_BEDROCK_RUNTIME"
+                        "OPENROUTER_API_KEY locally, or run hosted where the sidecar provides COWORLD_LLM_ENDPOINT"
                     )
                 brain = SeatBrain(
                     slot=seat.slot,

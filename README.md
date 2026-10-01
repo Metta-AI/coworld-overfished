@@ -226,7 +226,7 @@ it, `liar` fishes at full effort and talks like a model citizen, and a sneak fis
 council agreed and backs off when noticed), `viewer/` (replay
 viewer sources), `tools/` (build hook, manifest generator), `tests/`, `docs/`.
 
-Model calls: hosted, the game talks to the platform's LLM sidecar (`AWS_ENDPOINT_URL_BEDROCK_RUNTIME`) with
+Model calls: hosted, the game talks to the platform's LLM sidecar (`COWORLD_LLM_ENDPOINT`) with
 OpenAI-style chat completions and an `X-Coworld-Player-Slot` header so spend is billed to the seat; locally it
 uses `OPENROUTER_API_KEY` directly. Streaming is never used.
 
