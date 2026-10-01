@@ -142,6 +142,8 @@ async def test_cli_memory_survives_process_restart(tmp_path, unused_tcp_port, mo
                 souls.reverse()
             environment = os.environ.copy()
             if index:
+                environment.pop("OPENROUTER_API_KEY", None)
+                environment.pop("OPENROUTER_BASE_URL", None)
                 config = config_for(souls, turns=1, commune_rounds=1, llm={"think_turns": 0})
                 seats_path, artifacts = stage_local_episode(config, souls, out)
                 (out / "memory-input.json").write_text(
@@ -168,7 +170,10 @@ async def test_cli_memory_survives_process_restart(tmp_path, unused_tcp_port, mo
                     COGAME_PORT="0",
                     COGAME_MEMORY_INPUT_URI=(out / "memory-input.json").as_uri(),
                     COGAME_MEMORY_OUTPUT_URI=(out / "memory-output.json").as_uri(),
+                    COWORLD_LLM_ENABLED="true",
                     COWORLD_LLM_ENDPOINT=f"http://127.0.0.1:{unused_tcp_port}",
+                    OPENAI_BASE_URL=f"http://127.0.0.1:{unused_tcp_port}/v1",
+                    OPENAI_API_KEY="sidecar",
                 )
                 arguments = []
             else:
