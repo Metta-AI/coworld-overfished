@@ -132,7 +132,6 @@ async def test_cli_memory_survives_process_restart(tmp_path, unused_tcp_port, mo
     config_path.write_text(json.dumps({"commune_rounds": 1, "llm": {"think_turns": 0}}))
     memory = tmp_path / "memory"
     monkeypatch.delenv("COWORLD_LLM_ENDPOINT", raising=False)
-    monkeypatch.delenv("AWS_ENDPOINT_URL_BEDROCK_RUNTIME", raising=False)
     monkeypatch.setenv("OPENROUTER_API_KEY", "test-only")
     monkeypatch.setenv("OPENROUTER_BASE_URL", f"http://127.0.0.1:{unused_tcp_port}")
     try:
