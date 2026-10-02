@@ -8,6 +8,8 @@ import json
 import sys
 from pathlib import Path
 
+from pydantic import BaseModel
+
 from overfished.config import GameConfig
 from overfished.engine import Action, Engine, Gift, Punishment, Speech
 from overfished.llm import (
@@ -41,8 +43,15 @@ def compact(value: object) -> str:
     return json.dumps(value, separators=(",", ":"))
 
 
+class ResetRequest(BaseModel):
+    seed: str
+    players: int
+
+
 class TrainingSession:
-    def __init__(self, variant: str, mode: str, turns: int | None, souls: list[Path], scratchpad_dir: Path | None):
+    def __init__(
+        self, variant: str, mode: str, turns: int | None, souls: list[Path], scratchpad_dir: Path | None
+    ):
         manifest = json.loads((ROOT / "coworld_manifest_template.json").read_text())
         self.base_config = (
             manifest["certification"]["game_config"]
@@ -56,24 +65,28 @@ class TrainingSession:
         self.memory = ScratchpadStore(scratchpad_dir) if scratchpad_dir is not None else None
 
     def reset(self, request: dict[str, object]) -> dict[str, object]:
-        players = int(request["players"])
+        reset = ResetRequest.model_validate(request)
+        players = reset.players
         if players != len(self.base_config["players"]):
             raise ValueError(f"Variant requires {len(self.base_config['players'])} seats")
         if len(self.soul_data) != players:
             raise ValueError("one concrete soul artifact per training seat is required")
-        seed = int.from_bytes(hashlib.sha256(str(request["seed"]).encode()).digest()[:8], "big") or 1
+        seed = int.from_bytes(hashlib.sha256(reset.seed.encode()).digest()[:8], "big") or 1
         config = dict(self.base_config)
         config.update(tokens=[f"training-{seat}" for seat in range(players)], seed=seed)
         if self.turns is not None:
             config["turns"] = {"lo": self.turns, "hi": self.turns}
         self.config = GameConfig.model_validate(config)
-        self.engine = Engine(self.config, seed, [policy_id(data) for data in self.soul_data])
+        self.policy_ids = [policy_id(data) for data in self.soul_data]
+        self.engine = Engine(self.config, seed, self.policy_ids)
         souls = [parse_soul(data, self.config.model_aliases, set(SCRIPTED_NAMES)) for data in self.soul_data]
         self.brains = [
             SeatBrain(
                 slot=slot,
                 soul=soul,
-                system_prompt=seat_system_prompt(self.engine, slot, soul, persistent_memory=self.memory is not None),
+                system_prompt=seat_system_prompt(
+                    self.engine, slot, soul, persistent_memory=self.memory is not None
+                ),
             )
             for slot, soul in enumerate(souls)
         ]
@@ -86,7 +99,9 @@ class TrainingSession:
         self.speaker_index = 0
         self.order = self.engine.council_order()
         self.phase = "council" if self.engine.commune_due() else "fishing"
-        self.memory_seats = [slot for slot, soul in enumerate(souls) if not soul.model.startswith("scripted/")]
+        self.memory_seats = [
+            slot for slot, soul in enumerate(souls) if not soul.model.startswith("scripted/")
+        ]
         self.memory_index = 0
         if self.memory is not None and self.memory_seats:
             if self.mode != "text":
@@ -119,10 +134,11 @@ class TrainingSession:
         system = brain.system_prompt
         if self.phase == "memory_read":
             assert self.memory is not None
-            user = scratchpad_read_observation(self.engine, self.seat,
-                                              self.memory.read(self.engine.policy_ids[self.seat]))
+            user = scratchpad_read_observation(
+                self.engine, self.seat, self.memory.read(self.policy_ids[self.seat])
+            )
         elif self.phase == "memory_write":
-            shared_seats = self.engine.policy_ids.count(self.engine.policy_ids[self.seat])
+            shared_seats = self.policy_ids.count(self.policy_ids[self.seat])
             limit = (SCRATCHPAD_NOTE_BYTES - (shared_seats - 1)) // shared_seats
             user = scratchpad_write_observation(self.engine, self.seat, brain.notebook, limit)
         elif self.phase == "council":
@@ -168,9 +184,13 @@ class TrainingSession:
         }
         if self.phase in {"memory_read", "memory_write"}:
             key = "notebook" if self.phase == "memory_read" else "scratchpad_append"
-            return {"kind": "decision", **common, "inference_mode": "text_action",
-                    "action_schema": {"type": "object", "properties": {key: {"type": "string"}}},
-                    "typed_question": None}
+            return {
+                "kind": "decision",
+                **common,
+                "inference_mode": "text_action",
+                "action_schema": {"type": "object", "properties": {key: {"type": "string"}}},
+                "typed_question": None,
+            }
         if self.phase == "council":
             if self.mode == "text":
                 return {
@@ -239,18 +259,23 @@ class TrainingSession:
     def teacher(self) -> dict[str, str]:
         if self.phase == "memory_read":
             assert self.memory is not None
-            memory = self.memory.read(self.engine.policy_ids[self.seat])
+            memory = self.memory.read(self.policy_ids[self.seat])
             return {"response": compact({"notebook": memory.summary})}
         if self.phase == "memory_write":
             return {"response": "{}"}
         soul = self.brains[self.seat].soul
-        policy = scripted_policy(soul.scripted_name, soul.text) if soul.scripted else ScriptedPolicy("steady", 0.4)
+        policy = (
+            scripted_policy(soul.scripted_name, soul.text) if soul.scripted else ScriptedPolicy("steady", 0.4)
+        )
         if self.phase == "council":
             speech = policy.say(self.engine, self.seat, self.round_index)
             return {"response": compact({"say": speech}) if self.mode == "text" else speech}
         if self.mode == "choice":
             return {"response": compact({"choice": EFFORTS.index(0.4) * len(SOCIAL)})}
-        return {"response": policy.act(self.engine, self.seat).model_dump_json(), "policy": f"scripted/{policy.name}"}
+        return {
+            "response": policy.act(self.engine, self.seat).model_dump_json(),
+            "policy": f"scripted/{policy.name}",
+        }
 
     def say(self, request: dict[str, object]) -> dict[str, object]:
         if self.phase != "council" or request["decision_id"] != self.decision_id:
@@ -341,15 +366,22 @@ class TrainingSession:
         rejected = ""
         if self.phase == "memory_read":
             if reply is not None and isinstance(reply.get("notebook"), str):
-                self.brains[self.seat].notebook = reply["notebook"].strip()[:self.config.llm.notebook_max_chars]
+                self.brains[self.seat].notebook = reply["notebook"].strip()[
+                    : self.config.llm.notebook_max_chars
+                ]
                 action = {"notebook": self.brains[self.seat].notebook}
             else:
                 rejected = "memory unchanged: invalid notebook response"
         else:
-            shared_seats = self.engine.policy_ids.count(self.engine.policy_ids[self.seat])
+            shared_seats = self.policy_ids.count(self.policy_ids[self.seat])
             limit = (SCRATCHPAD_NOTE_BYTES - (shared_seats - 1)) // shared_seats
-            if reply is not None and set(reply) == {"scratchpad_append"} and isinstance(reply["scratchpad_append"], str) and len(reply["scratchpad_append"].encode("utf-8")) <= limit:
-                self.memory.append(self.engine.policy_ids[self.seat], reply["scratchpad_append"])
+            if (
+                reply is not None
+                and set(reply) == {"scratchpad_append"}
+                and isinstance(reply["scratchpad_append"], str)
+                and len(reply["scratchpad_append"].encode("utf-8")) <= limit
+            ):
+                self.memory.append(self.policy_ids[self.seat], reply["scratchpad_append"])
                 action = {"scratchpad_append": reply["scratchpad_append"]}
             else:
                 rejected = "memory unchanged: invalid or absent append"
@@ -359,10 +391,18 @@ class TrainingSession:
         if self.memory_index < len(self.memory_seats):
             self.seat = self.memory_seats[self.memory_index]
         else:
-            self.phase = "terminal" if self.phase == "memory_write" else ("council" if self.engine.commune_due() else "fishing")
+            self.phase = (
+                "terminal"
+                if self.phase == "memory_write"
+                else ("council" if self.engine.commune_due() else "fishing")
+            )
             self.seat = self.order[0] if self.phase == "council" else 0
-        return {"kind": "consumed_rejection" if rejected else "accepted", "reason": rejected,
-                "action": action, "observation": self.observation()}
+        return {
+            "kind": "consumed_rejection" if rejected else "accepted",
+            "reason": rejected,
+            "action": action,
+            "observation": self.observation(),
+        }
 
     def step_choice(self, request: dict[str, object]) -> dict[str, object]:
         if self.phase != "fishing":

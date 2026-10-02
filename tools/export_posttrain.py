@@ -8,6 +8,7 @@ import json
 import os
 import subprocess
 from pathlib import Path
+from typing import cast
 
 from overfished.__main__ import stage_local_episode
 from overfished.config import GameConfig
@@ -24,13 +25,19 @@ async def export(args: argparse.Namespace) -> None:
         raise ValueError("at least ten complete games and a positive first seed are required")
     if (
         await asyncio.to_thread(
-            subprocess.check_output, ["git", "status", "--porcelain"], cwd=ROOT, text=True
+            subprocess.run,
+            ["git", "status", "--porcelain"],
+            cwd=ROOT,
+            text=True,
+            capture_output=True,
+            check=True,
         )
-    ).strip():
+    ).stdout.strip():
         raise ValueError("commit the qualified source before generating a pinned corpus")
-    source = (
-        await asyncio.to_thread(subprocess.check_output, ["git", "rev-parse", "HEAD"], cwd=ROOT, text=True)
-    ).strip()
+    revision = await asyncio.to_thread(
+        subprocess.run, ["git", "rev-parse", "HEAD"], cwd=ROOT, text=True, capture_output=True, check=True
+    )
+    source = cast(str, revision.stdout).strip()
     base = next(item["game_config"] for item in manifest()["variants"] if item["id"] == args.variant)
     count = len(base["players"])
     if len(args.soul) != count:

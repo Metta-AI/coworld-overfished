@@ -116,7 +116,10 @@ class Trajectory:
     ) -> None:
         if self.finished:
             raise ValueError("cannot record after episode completion")
-        if any(record.decision_id == decision_id for record in self.records):
+        if any(
+            isinstance(record, DecisionRecord) and record.decision_id == decision_id
+            for record in self.records
+        ):
             raise ValueError("duplicate decision ID")
         if len({attempt.attempt_id for attempt in attempts}) != len(attempts):
             raise ValueError("duplicate attempt ID")
