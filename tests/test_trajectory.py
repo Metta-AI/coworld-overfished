@@ -10,6 +10,8 @@ from test_episode import SOULS, VILLAGER, run_episode
 from overfished.llm import Transport
 from overfished.trajectory import Attempt, Trajectory
 
+SOURCE_REVISION = subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
+
 
 def test_recorder_rejects_applied_action_mismatch():
     recorder = Trajectory(
@@ -91,8 +93,8 @@ async def test_native_attempts_join_private_memory_speech_and_actions(tmp_path, 
     monkeypatch.setenv("COGAME_SAVE_TRAJECTORY_URI", trajectory.as_uri())
     monkeypatch.setenv("COWORLD_EPISODE_ID", "native-fixture")
     monkeypatch.setenv("COWORLD_GAME_VERSION", "fixture")
-    monkeypatch.setenv("COWORLD_SOURCE_REVISION", subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip())
-    monkeypatch.setenv("COWORLD_GAME_IMAGE_DIGEST", "sha256:" + "d" * 64)
+    monkeypatch.setenv("COWORLD_SOURCE_REVISION", SOURCE_REVISION)
+    monkeypatch.delenv("COWORLD_GAME_IMAGE_DIGEST", raising=False)
     monkeypatch.setenv("COWORLD_LLM_TEMPERATURE", "0")
     try:
         async with aiohttp.ClientSession() as session:
@@ -154,7 +156,7 @@ async def test_failed_native_responses_survive_complete_fallback_episode(
     monkeypatch.setenv("COGAME_SAVE_TRAJECTORY_URI", trajectory.as_uri())
     monkeypatch.setenv("COWORLD_EPISODE_ID", f"native-failure-{mode}")
     monkeypatch.setenv("COWORLD_GAME_VERSION", "fixture")
-    monkeypatch.setenv("COWORLD_SOURCE_REVISION", subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip())
+    monkeypatch.setenv("COWORLD_SOURCE_REVISION", SOURCE_REVISION)
     try:
         async with aiohttp.ClientSession() as session:
             transport = Transport(f"http://127.0.0.1:{unused_tcp_port}", None, 2, session)
