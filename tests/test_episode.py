@@ -48,7 +48,16 @@ class FakeTransport(Transport):
     def describe(self) -> str:
         return "fake"
 
-    async def complete(self, *, model: str, messages: list[dict], max_tokens: int, slot: int, reasoning: dict | None = None) -> str:
+    async def complete(
+        self,
+        *,
+        model: str,
+        messages: list[dict],
+        max_tokens: int,
+        slot: int,
+        evidence,
+        reasoning: dict | None = None,
+    ) -> str:
         self.calls += 1
         self.slots_seen.add(slot)
         assert model.startswith("anthropic/") or "/" in model
@@ -59,10 +68,14 @@ class FakeTransport(Transport):
             return self.replies.pop(0)
         last = messages[-1]["content"]
         if last.startswith("Continue privately"):
-            return json.dumps({"thinking": "ok, deciding", "notebook": "keep at 50%", "effort": 0.5, "punish": []})
+            return json.dumps(
+                {"thinking": "ok, deciding", "notebook": "keep at 50%", "effort": 0.5, "punish": []}
+            )
         if "COUNCIL" in last[:60]:
             self.council_prompts.append(last)
-            return json.dumps({"thinking": "say something", "say": f"Seat {slot} says: let us all fish at half."})
+            return json.dumps(
+                {"thinking": "say something", "say": f"Seat {slot} says: let us all fish at half."}
+            )
         assert "GIFTS recently" in last and "luck" in messages[0]["content"]
         return json.dumps({"thinking": "let me think more", "continue": True})
 
@@ -91,6 +104,32 @@ async def test_scripted_episode_writes_every_artifact(tmp_path: Path):
     status = json.loads((out / "player_status.json").read_text())
     assert [p["state"] for p in status["players"]] == ["exited"] * 4
     assert results["models"][1] == "scripted/greedy"
+
+
+async def test_complete_private_teacher_trajectory_matches_applied_actions(tmp_path: Path, monkeypatch):
+    trajectory = tmp_path / "trajectory.jsonl"
+    monkeypatch.setenv("COGAME_SAVE_TRAJECTORY_URI", trajectory.as_uri())
+    monkeypatch.setenv("COWORLD_EPISODE_ID", "private-teacher-episode")
+    monkeypatch.setenv("COWORLD_GAME_VERSION", "fixture")
+    monkeypatch.setenv("COWORLD_SOURCE_REVISION", "a" * 40)
+    souls = [SOULS / "steady.md", SOULS / "greedy.md", SOULS / "enforcer.md", SOULS / "steady.md"]
+    results, replay, _ = await run_episode(tmp_path, souls, None)
+    records = [json.loads(line) for line in trajectory.read_text().splitlines()]
+    assert records[-1]["event_type"] == "episode" and records[-1]["status"] == "completed"
+    assert records[-1]["outcome"]["scores"] == results["scores"]
+    decisions = records[:-1]
+    assert len(decisions) == 24 + sum(len(r) for c in replay["communes"] for r in c["rounds"])
+    for index, record in enumerate(decisions):
+        assert record["decision_index"] == index
+        selected = record["attempts"][0]
+        assert selected["origin"] == "teacher" and selected["platform_call_id"] is None
+        assert selected["parsed_action"] == record["executed_action"]
+        assert record["selected_attempt_id"] == selected["attempt_id"]
+        assert record["prompt"][0]["content"].startswith(
+            souls[int(record["seat"])].read_text().partition("\n")[2].strip()
+        )
+    assert trajectory.stat().st_mode & 0o777 == 0o600
+    assert "attempt_id" not in json.dumps(replay)
 
 
 async def test_soul_seats_think_then_act_and_talk(tmp_path: Path):

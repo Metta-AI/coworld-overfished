@@ -90,9 +90,24 @@ async def test_transport_reads_json_from_reasoning_when_content_is_empty(monkeyp
 
     class FakeResponse:
         status = 200
+        headers = {}
 
         async def text(self):
-            return _json.dumps({"choices": [{"finish_reason": "stop", "message": {"content": "", "reasoning": 'thinking... {"effort": 0.3, "punish": []}'}}], "usage": {}})
+            return _json.dumps(
+                {
+                    "model": "deepseek/served",
+                    "choices": [
+                        {
+                            "finish_reason": "stop",
+                            "message": {
+                                "content": "",
+                                "reasoning": 'thinking... {"effort": 0.3, "punish": []}',
+                            },
+                        }
+                    ],
+                    "usage": {"prompt_tokens": 3, "completion_tokens": 2},
+                }
+            )
 
         async def __aenter__(self):
             return self
@@ -105,7 +120,15 @@ async def test_transport_reads_json_from_reasoning_when_content_is_empty(monkeyp
             return FakeResponse()
 
     transport = Transport(base_url="http://fake", api_key=None, timeout_seconds=1.0, session=FakeSession())
-    text = await transport.complete(model="deepseek/deepseek-v4-pro", messages=[], max_tokens=10, slot=0)
+    from overfished.trajectory import Attempt
+
+    text = await transport.complete(
+        model="deepseek/deepseek-v4-pro",
+        messages=[],
+        max_tokens=10,
+        slot=0,
+        evidence=Attempt(policy="fixture", inference_mode="text_action", prompt=[]),
+    )
     assert extract_json(text) == {"effort": 0.3, "punish": []}
 
 

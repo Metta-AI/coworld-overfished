@@ -11,18 +11,22 @@ from __future__ import annotations
 
 import asyncio
 import json
+import math
 import os
 import re
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from typing import Literal
 
 import aiohttp
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from overfished.config import GameConfig
 from overfished.engine import Action, Engine, Gift, Punishment
-from overfished.memory import SCRATCHPAD_MAX_BYTES
+from overfished.memory import SCRATCHPAD_MAX_BYTES, SCRATCHPAD_NOTE_BYTES, MemoryView
 from overfished.soul import Soul
+from overfished.trajectory import Attempt
 
 PLAYER_SLOT_HEADER = "X-Coworld-Player-Slot"
 _JSON_OBJECT = re.compile(r"\{.*\}", re.DOTALL)
@@ -30,6 +34,38 @@ _JSON_OBJECT = re.compile(r"\{.*\}", re.DOTALL)
 
 class LlmError(RuntimeError):
     """A model call failed in a way the game treats as that seat's problem for this decision."""
+
+
+class ContentPart(BaseModel):
+    text: str = ""
+
+
+class CompletionMessage(BaseModel):
+    content: str | list[ContentPart] | None = None
+    reasoning: str | None = None
+
+
+class CompletionChoice(BaseModel):
+    message: CompletionMessage
+    finish_reason: str | None
+
+
+class CompletionUsage(BaseModel):
+    prompt_tokens: int = Field(ge=0)
+    completion_tokens: int = Field(ge=0)
+
+
+class SamplingEvidence(BaseModel):
+    prompt_token_ids: list[int]
+    completion_token_ids: list[int]
+    behavior_log_probs: list[float] | None
+
+
+class CompletionResponse(BaseModel):
+    model: str
+    choices: list[CompletionChoice]
+    usage: CompletionUsage
+    sampling_evidence: SamplingEvidence | None = None
 
 
 @dataclass
@@ -47,15 +83,35 @@ class Transport:
         return f"{self.base_url}/v1/chat/completions ({'bearer key' if self.api_key else 'sidecar, no auth'})"
 
     async def complete(
-        self, *, model: str, messages: list[dict], max_tokens: int, slot: int, reasoning: dict | None = None
+        self,
+        *,
+        model: str,
+        messages: list[dict],
+        max_tokens: int,
+        slot: int,
+        evidence: Attempt,
+        reasoning: dict | None = None,
     ) -> str:
         headers = {"Content-Type": "application/json", PLAYER_SLOT_HEADER: str(slot)}
         if self.api_key:
             headers["Authorization"] = f"Bearer {self.api_key}"
-        body = {"model": model, "messages": messages, "max_tokens": max_tokens, "stream": False}
+        temperature = float(os.environ.get("COWORLD_LLM_TEMPERATURE", "1"))
+        if not math.isfinite(temperature) or not 0 <= temperature <= 1:
+            raise ValueError("COWORLD_LLM_TEMPERATURE must be finite and between 0 and 1")
+        body = {
+            "model": model,
+            "messages": messages,
+            "max_tokens": max_tokens,
+            "stream": False,
+            "temperature": temperature,
+        }
         if reasoning:
             body["reasoning"] = reasoning
         self.calls += 1
+        evidence.request = json.loads(json.dumps(body))
+        evidence.model = model
+        evidence.decoder = {"temperature": temperature, "max_tokens": max_tokens}
+        started = time.monotonic()
         try:
             async with self.session.post(
                 f"{self.base_url}/v1/chat/completions",
@@ -63,37 +119,49 @@ class Transport:
                 json=body,
                 timeout=aiohttp.ClientTimeout(total=self.timeout_seconds),
             ) as response:
+                if "X-Softmax-Llm-Call-Id" in response.headers:
+                    evidence.platform_call_id = response.headers["X-Softmax-Llm-Call-Id"]
+                for header, attribute in [
+                    ("X-Coworld-Checkpoint-Sha256", "model_identity"),
+                    ("X-Coworld-Tokenizer-Sha256", "tokenizer_identity"),
+                    ("X-Coworld-Chat-Template-Sha256", "chat_template_sha256"),
+                ]:
+                    if header in response.headers:
+                        setattr(evidence, attribute, response.headers[header])
                 text = await response.text()
+                evidence.latency_ms = (time.monotonic() - started) * 1000
+                evidence.raw_response = text
                 if response.status != 200:
                     raise LlmError(f"HTTP {response.status} from {self.base_url}: {text[:800]}")
-        except (aiohttp.ClientError, asyncio.TimeoutError) as error:
+            payload = json.loads(text, strict=False)
+            evidence.raw_response = payload
+            completion = CompletionResponse.model_validate(payload)
+            evidence.model = completion.model
+            evidence.input_tokens = completion.usage.prompt_tokens
+            evidence.output_tokens = completion.usage.completion_tokens
+            if completion.sampling_evidence is not None:
+                sampling = completion.sampling_evidence
+                evidence.prompt_token_ids = sampling.prompt_token_ids
+                evidence.sampled_token_ids = sampling.completion_token_ids
+                evidence.behavior_logprobs = sampling.behavior_log_probs
+            self.prompt_tokens += completion.usage.prompt_tokens
+            self.completion_tokens += completion.usage.completion_tokens
+            if not completion.choices:
+                raise LlmError("provider returned no choices")
+            choice = completion.choices[0]
+            evidence.stop_reason = choice.finish_reason
+            content = choice.message.content
+            if isinstance(content, list):
+                content = "".join(part.text for part in content)
+            if not content and choice.message.reasoning and extract_json(choice.message.reasoning) is not None:
+                content = choice.message.reasoning
+            if not isinstance(content, str) or not content.strip():
+                raise LlmError(f"provider returned no text (finish_reason={choice.finish_reason!r})")
+            evidence.response = content
+            return content
+        except (aiohttp.ClientError, TimeoutError, json.JSONDecodeError, ValidationError) as error:
             raise LlmError(f"{type(error).__name__}: {error}") from None
-        payload = json.loads(text, strict=False)
-        if "error" in payload and "choices" not in payload:
-            raise LlmError(f"provider error: {json.dumps(payload['error'])[:800]}")
-        usage = payload.get("usage") or {}
-        self.prompt_tokens += int(usage.get("prompt_tokens") or 0)
-        self.completion_tokens += int(usage.get("completion_tokens") or 0)
-        choices = payload["choices"]
-        if not choices:
-            raise LlmError("provider returned no choices")
-        message = choices[0]["message"]
-        content = message.get("content")
-        if isinstance(content, list):
-            content = "".join(part.get("text", "") for part in content if isinstance(part, dict))
-        if (not isinstance(content, str) or not content.strip()) and isinstance(message.get("reasoning"), str):
-            # Some reasoning models (DeepSeek V4 via OpenRouter) finish normally with the whole reply in the
-            # reasoning field and an empty content field. The JSON object is still there; use it.
-            if extract_json(message["reasoning"]) is not None:
-                content = message["reasoning"]
-        if not isinstance(content, str) or not content.strip():
-            finish = choices[0].get("finish_reason")
-            reasoning_tokens = ((usage.get("completion_tokens_details") or {}).get("reasoning_tokens")) or 0
-            raise LlmError(
-                f"provider returned no text (finish_reason={finish!r}, reasoning_tokens={reasoning_tokens}, "
-                f"completion_tokens={usage.get('completion_tokens')}); raise llm.max_output_tokens if the model reasons before answering"
-            )
-        return content
+
 
 
 def transport_from_env(session: aiohttp.ClientSession, timeout_seconds: float) -> Transport | None:
@@ -439,6 +507,7 @@ class SeatBrain:
     failures: int = 0
     fallbacks: int = 0
     last_thinking: list[str] = field(default_factory=list)
+    memory_attempts: list[Attempt] = field(default_factory=list)
 
 
 @dataclass
@@ -447,6 +516,75 @@ class Decision:
     say: str | None = None
     auto: bool = False
     transcript: list[str] = field(default_factory=list)
+    attempts: list[Attempt] = field(default_factory=list)
+
+
+class InvalidReply(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    kind: Literal["invalid"] = "invalid"
+    reason: str
+    retry_message: str
+
+
+class ThinkingReply(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    kind: Literal["thinking"] = "thinking"
+
+
+class ActionReply(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    kind: Literal["action"] = "action"
+    action: Action
+
+
+class SpeechReply(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    kind: Literal["speech"] = "speech"
+    text: str
+
+
+def parse_decision_reply(
+    text: str,
+    brain: SeatBrain,
+    engine: Engine,
+    council: bool,
+) -> InvalidReply | ThinkingReply | ActionReply | SpeechReply:
+    """The hosted and training paths share private memory and action parsing."""
+    reply = extract_json(text)
+    if reply is None:
+        return InvalidReply(
+            reason="reply had no JSON object",
+            retry_message="That was not a JSON object. Reply with exactly one JSON object.",
+        )
+    thinking = clip(reply.get("thinking"), 4000)
+    if thinking:
+        brain.last_thinking.append(thinking)
+    if "notebook" in reply:
+        brain.notebook = clip(reply["notebook"], engine.config.llm.notebook_max_chars)
+    if reply.get("continue") is True and "effort" not in reply and "say" not in reply:
+        return ThinkingReply()
+    if council:
+        return SpeechReply(text=clip(reply.get("say"), engine.config.llm.say_max_chars))
+    parsed = parse_action(reply, engine, brain.slot)
+    if isinstance(parsed, Action):
+        return ActionReply(action=parsed)
+    return InvalidReply(
+        reason=parsed, retry_message=f"Invalid: {parsed}. Reply with one corrected JSON object."
+    )
+
+
+def seat_system_prompt(engine: Engine, slot: int, soul: Soul, *, persistent_memory: bool) -> str:
+    return (
+        soul.text
+        + "\n\n"
+        + mechanics_block(
+            engine.config,
+            engine.pseudonyms[slot],
+            engine.config.num_players,
+            engine.lake.boat_capacity,
+            persistent_memory=persistent_memory,
+        )
+    )
 
 
 async def decide(
@@ -469,6 +607,8 @@ async def decide(
         log(f"decision exceeded {config.decision_seconds:.0f}s in total; falling back")
         decision.action = None
         decision.say = None
+        if decision.attempts:
+            decision.attempts[-1].rejection_reason = "whole decision deadline exceeded"
     if decision.action is None and decision.say is None:
         decision.auto = True
         brain.fallbacks += 1
@@ -482,59 +622,72 @@ async def _decide_calls(brain, transport, engine, observation, council, think_tu
     retries_left = 1
     for _ in range(config.max_calls_per_decision):
         brain.calls += 1
+        evidence = Attempt(
+            policy=brain.soul.model,
+            inference_mode="speech" if council else "text_action",
+            prompt=json.loads(json.dumps(messages)),
+        )
+        decision.attempts.append(evidence)
         try:
             reply_text = await transport.complete(
                 model=brain.soul.model,
                 messages=messages,
                 max_tokens=config.max_output_tokens,
                 slot=brain.slot,
+                evidence=evidence,
                 reasoning=config.reasoning,
             )
         except LlmError as error:
+            evidence.rejection_reason = str(error)
             brain.failures += 1
             log(f"model call failed: {error}")
             break
         decision.transcript.append(reply_text)
-        reply = extract_json(reply_text)
-        if reply is None:
-            log("reply had no JSON object; " + ("asking once more" if retries_left else "giving up"))
-            if retries_left == 0:
-                break
-            retries_left -= 1
-            messages.append({"role": "assistant", "content": reply_text})
-            messages.append({"role": "user", "content": "That was not a JSON object. Reply with exactly one JSON object."})
-            continue
-        thinking = clip(reply.get("thinking"), 4000)
-        if thinking:
-            brain.last_thinking.append(thinking)
-            log(f"thinking: {thinking}")
-        if "notebook" in reply:
-            brain.notebook = clip(reply.get("notebook"), config.notebook_max_chars)
-        if reply.get("continue") is True and "effort" not in reply and "say" not in reply:
+        evidence.response = reply_text
+        previous_thoughts = len(brain.last_thinking)
+        parsed = parse_decision_reply(reply_text, brain, engine, council)
+        if len(brain.last_thinking) > previous_thoughts:
+            log(f"thinking: {brain.last_thinking[-1]}")
+        if isinstance(parsed, ThinkingReply):
+            evidence.rejection_reason = "private thinking continuation; no game action"
             if thinks_left <= 0:
                 log("asked to continue thinking with no thinking turns left; demanding a decision")
                 messages.append({"role": "assistant", "content": reply_text})
-                messages.append({"role": "user", "content": "No more private thinking turns. Decide now with one JSON object."})
+                messages.append(
+                    {
+                        "role": "user",
+                        "content": "No more private thinking turns. Decide now with one JSON object.",
+                    }
+                )
                 continue
             thinks_left -= 1
             messages.append({"role": "assistant", "content": reply_text})
             messages.append(
-                {"role": "user", "content": f"Continue privately. {thinks_left} thinking turn(s) left before you must decide."}
+                {
+                    "role": "user",
+                    "content": f"Continue privately. {thinks_left} thinking turn(s) left before you must decide.",
+                }
             )
             continue
-        if council:
-            decision.say = clip(reply.get("say"), config.say_max_chars)
+        if isinstance(parsed, SpeechReply):
+            decision.say = parsed.text
+            evidence.parsed_action = {"say": parsed.text}
+            evidence.accepted = True
+            evidence.rejection_reason = None
             return
-        parsed = parse_action(reply, engine, brain.slot)
-        if isinstance(parsed, Action):
-            decision.action = parsed
+        if isinstance(parsed, ActionReply):
+            decision.action = parsed.action
+            evidence.parsed_action = parsed.action.model_dump(mode="json")
+            evidence.accepted = True
+            evidence.rejection_reason = None
             return
-        log(f"invalid action: {parsed}; " + ("asking once more" if retries_left else "giving up"))
+        evidence.rejection_reason = parsed.reason
+        log(f"invalid action: {parsed.reason}; " + ("asking once more" if retries_left else "giving up"))
         if retries_left == 0:
             break
         retries_left -= 1
         messages.append({"role": "assistant", "content": reply_text})
-        messages.append({"role": "user", "content": f"Invalid: {parsed}. Reply with one corrected JSON object."})
+        messages.append({"role": "user", "content": parsed.retry_message})
 
 
 def elapsed_since(start: float) -> float:
@@ -564,27 +717,66 @@ def final_observation(engine: Engine, slot: int, notebook: str) -> str:
     ])
 
 
+def scratchpad_read_observation(engine: Engine, slot: int, memory: MemoryView) -> str:
+    return (
+        "SCRATCHPAD READ. The episode has not started. You are "
+        + engine.pseudonyms[slot]
+        + ".\n"
+        + policy_roster(engine)
+        + "\nThis is your one read of your private scratchpad. You may carry notes into your episode notebook. "
+        + f'Reply with {{"notebook": "<up to {engine.config.llm.notebook_max_chars} characters>"}}.'
+        + "\nCompacted summary:\n"
+        + memory.summary
+        + "\nRecent notes (oldest first, newest last):\n"
+        + "\n\n".join(f"Note {index}:\n{note}" for index, note in enumerate(memory.notes, 1))
+    )
+
+
+def scratchpad_write_observation(engine: Engine, slot: int, notebook: str, limit: int) -> str:
+    return (
+        "SCRATCHPAD WRITE. The episode is over. This is your one optional scratchpad update. "
+        'Reply with {"scratchpad_append": "<new notes>"}, or {} to leave memory unchanged. '
+        f"Identical souls share one {SCRATCHPAD_NOTE_BYTES}-byte contribution per episode. "
+        f"Your seat may contribute at most {limit} UTF-8 bytes, allowing for separators between seats. "
+        "Older notes may be compacted into a summary. "
+        "Invalid or oversized contributions are discarded.\n\n" + final_observation(engine, slot, notebook)
+    )
+
+
 async def scratchpad_decision(
     brain: SeatBrain, transport: Transport, engine: Engine, observation: str, log: Callable[[str], None]
 ) -> dict | None:
     """Exactly one model call at each episode boundary; failures preserve stored memory."""
     config = engine.config.llm
     brain.calls += 1
+    messages = [{"role": "system", "content": brain.system_prompt}, {"role": "user", "content": observation}]
+    evidence = Attempt(policy=brain.soul.model, inference_mode="memory", prompt=messages)
+    brain.memory_attempts.append(evidence)
     try:
         async with asyncio.timeout(config.decision_seconds):
             response = await transport.complete(
                 model=brain.soul.model,
-                messages=[{"role": "system", "content": brain.system_prompt},
-                          {"role": "user", "content": observation}],
+                messages=messages,
                 max_tokens=config.max_output_tokens,
                 slot=brain.slot,
+                evidence=evidence,
                 reasoning=config.reasoning,
             )
         reply = extract_json(response)
+        evidence.response = response
         if reply is None:
             log("scratchpad reply had no JSON object; memory unchanged")
+        elif observation.startswith("SCRATCHPAD READ") and isinstance(reply.get("notebook"), str):
+            evidence.parsed_action = {"notebook": clip(reply["notebook"], config.notebook_max_chars)}
+        elif (
+            observation.startswith("SCRATCHPAD WRITE")
+            and set(reply) == {"scratchpad_append"}
+            and isinstance(reply["scratchpad_append"], str)
+        ):
+            evidence.parsed_action = {"scratchpad_append": reply["scratchpad_append"]}
         return reply
     except (LlmError, TimeoutError) as error:
+        evidence.rejection_reason = str(error)
         brain.failures += 1
         log(f"scratchpad model call failed: {type(error).__name__}: {error}")
         return None
