@@ -121,7 +121,13 @@ async def test_cli_memory_survives_process_restart(tmp_path, unused_tcp_port, mo
                 "effort": 0.2 if "private carried note" in observation else 0.7,
                 "scratchpad": "illegal mid-game replacement",
             }
-        return web.json_response({"choices": [{"message": {"content": json.dumps(reply)}}]})
+        return web.json_response(
+            {
+                "model": "fixture/served",
+                "choices": [{"finish_reason": "stop", "message": {"content": json.dumps(reply)}}],
+                "usage": {"prompt_tokens": 1, "completion_tokens": 1},
+            }
+        )
 
     app = web.Application()
     app.router.add_post("/v1/chat/completions", complete)
@@ -226,7 +232,9 @@ async def test_cli_memory_survives_process_restart(tmp_path, unused_tcp_port, mo
     assert [slot for slot, _ in reads] == ["0", "1"]
     assert "private durable note" not in reads[0][1]
     assert "private durable note" in reads[1][1]
-    assert ScratchpadStore(memory).read(policy_id(VILLAGER.read_bytes())).notes == ["private durable note\n"] * 2
+    assert (
+        ScratchpadStore(memory).read(policy_id(VILLAGER.read_bytes())).notes == ["private durable note\n"] * 2
+    )
 
 
 def _append_in_process(root, key, index):

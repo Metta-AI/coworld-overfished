@@ -28,10 +28,10 @@ from overfished.llm import (
     clip,
     council_observation,
     decide,
-    final_observation,
-    mechanics_block,
-    policy_roster,
     scratchpad_decision,
+    scratchpad_read_observation,
+    scratchpad_write_observation,
+    seat_system_prompt,
     transport_from_env,
     turn_observation,
 )
@@ -54,6 +54,7 @@ from overfished.seats import (
     write_player_status,
 )
 from overfished.soul import Soul, SoulError, parse_soul
+from overfished.trajectory import Attempt, Trajectory
 from overfished.viewer_build import DEFAULT_VIEWER_DIR, build_index_html
 
 
@@ -70,6 +71,10 @@ class SeatRuntime:
     brain: SeatBrain | None
     scratchpad: MemoryView = field(default_factory=lambda: MemoryView(summary="", notes=[]))
     scratchpad_loaded: bool = False
+    pending_attempts: list[Attempt] = field(default_factory=list)
+    pending_prompt: list[dict[str, str]] = field(default_factory=list)
+    pending_observation: str = ""
+    memory_write_requested: bool = False
 
     def note(self, line: str) -> None:
         self.log.write(f"[{time.strftime('%H:%M:%S')}] {line}")
@@ -96,6 +101,17 @@ class Episode:
     subscribers: set[web.WebSocketResponse] = field(default_factory=set)
     seat_subscribers: dict[int, set[web.WebSocketResponse]] = field(default_factory=dict)
     done: asyncio.Event = field(default_factory=asyncio.Event)
+    trajectory: Trajectory | None = None
+
+    def __post_init__(self) -> None:
+        if "COGAME_SAVE_TRAJECTORY_URI" in os.environ:
+            self.trajectory = Trajectory(
+                episode_id=os.environ["COWORLD_EPISODE_ID"],
+                game_version=os.environ["COWORLD_GAME_VERSION"],
+                source_revision=os.environ["COWORLD_SOURCE_REVISION"],
+                seed_family=f"overfished-{self.engine.seed}",
+                image_digest=os.environ.get("COWORLD_GAME_IMAGE_DIGEST"),
+            )
 
     # ---- construction ----------------------------------------------------------------
 
@@ -110,11 +126,17 @@ class Episode:
         scratchpad_dir: Path | None = None,
     ) -> "Episode":
         if len(document.seats) != config.num_players:
-            raise ValueError(f"seats document has {len(document.seats)} seats but the config seats {config.num_players}")
+            raise ValueError(
+                f"seats document has {len(document.seats)} seats but the config seats {config.num_players}"
+            )
         scratchpads: ScratchpadStore | HostedScratchpadStore | None = None
         if "COGAME_MEMORY_INPUT_URI" in os.environ:
-            scratchpads = HostedScratchpadStore(os.environ["COGAME_MEMORY_INPUT_URI"], os.environ["COGAME_MEMORY_OUTPUT_URI"])
-        elif "COGAME_CONFIG_URI" not in os.environ and (scratchpad_dir is not None or "OVERFISHED_SCRATCHPAD_DIR" in os.environ):
+            scratchpads = HostedScratchpadStore(
+                os.environ["COGAME_MEMORY_INPUT_URI"], os.environ["COGAME_MEMORY_OUTPUT_URI"]
+            )
+        elif "COGAME_CONFIG_URI" not in os.environ and (
+            scratchpad_dir is not None or "OVERFISHED_SCRATCHPAD_DIR" in os.environ
+        ):
             scratchpads = ScratchpadStore(scratchpad_dir or Path(os.environ["OVERFISHED_SCRATCHPAD_DIR"]))
         soul_data = [read_uri(seat.file_uri) for seat in document.seats]
         engine = Engine(config, seed, [policy_id(data) for data in soul_data])
@@ -128,7 +150,9 @@ class Episode:
                 seat_log.write(f"soul file rejected: {error}")
                 for other in logs:
                     other.close()
-                write_player_failure(artifacts.failure_uri, seat.slot, f"seat {seat.slot}: soul file rejected: {error}")
+                write_player_failure(
+                    artifacts.failure_uri, seat.slot, f"seat {seat.slot}: soul file rejected: {error}"
+                )
                 raise
             scripted = scripted_policy(soul.scripted_name, soul.text) if soul.scripted else None
             brain = None
@@ -143,16 +167,18 @@ class Episode:
                 brain = SeatBrain(
                     slot=seat.slot,
                     soul=soul,
-                    system_prompt=soul.text
-                    + "\n\n"
-                    + mechanics_block(config, engine.pseudonyms[seat.slot], config.num_players, engine.lake.boat_capacity, persistent_memory=scratchpads is not None),
+                    system_prompt=seat_system_prompt(
+                        engine, seat.slot, soul, persistent_memory=scratchpads is not None
+                    ),
                 )
             runtime = SeatRuntime(slot=seat.slot, soul=soul, log=seat_log, scripted=scripted, brain=brain)
             runtime.note(
                 f"seated as {engine.pseudonyms[seat.slot]} (slot {seat.slot}); model {soul.model}; "
                 f"soul {len(data)} bytes sha256 {seat.content_hash}"
             )
-            runtime.note("this log is private to the seat: it holds prompts, private thinking, and notebook updates")
+            runtime.note(
+                "this log is private to the seat: it holds prompts, private thinking, and notebook updates"
+            )
             seats.append(runtime)
         return cls(
             config=config,
@@ -206,24 +232,61 @@ class Episode:
     # ---- decisions -------------------------------------------------------------------
 
     async def fishing_decision(self, seat: SeatRuntime, think_turns: int) -> Action:
+        seat.pending_attempts = []
+        notebook = seat.brain.notebook if seat.brain else ""
+        observation = turn_observation(self.engine, seat.slot, notebook)
+        system = (
+            seat.brain.system_prompt
+            if seat.brain
+            else seat_system_prompt(
+                self.engine, seat.slot, seat.soul, persistent_memory=self.scratchpads is not None
+            )
+        )
+        seat.pending_prompt = [
+            {"role": "system", "content": system},
+            {"role": "user", "content": observation},
+        ]
+        seat.pending_observation = observation
         if seat.scripted is not None:
             action = seat.scripted.act(self.engine, seat.slot)
-            seat.note(f"turn {self.engine.turn}: scripted {seat.scripted.name} -> effort {action.effort:.2f}, punish {[p.model_dump() for p in action.punish]}")
+            seat.pending_attempts = [
+                Attempt(
+                    policy=f"scripted/{seat.scripted.name}",
+                    origin="teacher",
+                    inference_mode="text_action",
+                    prompt=seat.pending_prompt,
+                    response=json.dumps(action.model_dump(mode="json")),
+                    parsed_action=action.model_dump(mode="json"),
+                    accepted=True,
+                    rejection_reason=None,
+                )
+            ]
+            seat.note(
+                f"turn {self.engine.turn}: scripted {seat.scripted.name} -> effort {action.effort:.2f}, punish {[p.model_dump() for p in action.punish]}"
+            )
             return action
         assert seat.brain is not None and self.transport is not None
         if think_turns < 0:
             action = fallback_action(self.engine, seat.slot)
-            seat.note(f"turn {self.engine.turn}: LLM wall budget exhausted; fallback effort {action.effort:.2f}")
+            seat.note(
+                f"turn {self.engine.turn}: LLM wall budget exhausted; fallback effort {action.effort:.2f}"
+            )
             return action
-        observation = turn_observation(self.engine, seat.slot, seat.brain.notebook)
         seat.note(f"turn {self.engine.turn}: observation\n{observation}")
 
         def note(line: str) -> None:
             seat.note(f"turn {self.engine.turn}: {line}")
 
         decision = await decide(
-            seat.brain, self.transport, self.engine, observation=observation, council=False, think_turns=think_turns, log=note
+            seat.brain,
+            self.transport,
+            self.engine,
+            observation=observation,
+            council=False,
+            think_turns=think_turns,
+            log=note,
         )
+        seat.pending_attempts = decision.attempts
         for reply in decision.transcript:
             seat.note(f"turn {self.engine.turn}: raw reply\n{reply}")
         if decision.action is None:
@@ -245,31 +308,91 @@ class Episode:
         so_far: list[Speech],
         think_turns: int,
     ) -> Speech:
+        seat.pending_attempts = []
+        notebook = seat.brain.notebook if seat.brain else ""
+        observation = council_observation(
+            self.engine, seat.slot, notebook, round_index, order, earlier, so_far
+        )
+        system = (
+            seat.brain.system_prompt
+            if seat.brain
+            else seat_system_prompt(
+                self.engine, seat.slot, seat.soul, persistent_memory=self.scratchpads is not None
+            )
+        )
+        seat.pending_prompt = [
+            {"role": "system", "content": system},
+            {"role": "user", "content": observation},
+        ]
+        seat.pending_observation = observation
         if seat.scripted is not None:
             text = seat.scripted.say(self.engine, seat.slot, round_index)
-            return Speech(slot=seat.slot, text=text[: self.config.llm.say_max_chars])
+            speech = Speech(slot=seat.slot, text=text[: self.config.llm.say_max_chars])
+            seat.pending_attempts = [
+                Attempt(
+                    policy=f"scripted/{seat.scripted.name}",
+                    origin="teacher",
+                    inference_mode="speech",
+                    prompt=seat.pending_prompt,
+                    response=json.dumps({"say": speech.text}),
+                    parsed_action={"say": speech.text},
+                    accepted=True,
+                    rejection_reason=None,
+                )
+            ]
+            return speech
         assert seat.brain is not None and self.transport is not None
         if think_turns < 0:
-            seat.note(f"council before turn {self.engine.turn} round {round_index + 1}: LLM wall budget exhausted; silent")
+            seat.note(
+                f"council before turn {self.engine.turn} round {round_index + 1}: LLM wall budget exhausted; silent"
+            )
             return Speech(slot=seat.slot, text="", auto=True)
-        observation = council_observation(self.engine, seat.slot, seat.brain.notebook, round_index, order, earlier, so_far)
-        seat.note(f"council before turn {self.engine.turn} round {round_index + 1}: observation\n{observation}")
+        seat.note(
+            f"council before turn {self.engine.turn} round {round_index + 1}: observation\n{observation}"
+        )
 
         def note(line: str) -> None:
             seat.note(f"council before turn {self.engine.turn} round {round_index + 1}: {line}")
 
         decision = await decide(
-            seat.brain, self.transport, self.engine, observation=observation, council=True, think_turns=think_turns, log=note
+            seat.brain,
+            self.transport,
+            self.engine,
+            observation=observation,
+            council=True,
+            think_turns=think_turns,
+            log=note,
         )
+        seat.pending_attempts = decision.attempts
         for reply in decision.transcript:
             seat.note(f"council before turn {self.engine.turn} round {round_index + 1}: raw reply\n{reply}")
         if decision.say is None:
-            seat.note(f"council before turn {self.engine.turn} round {round_index + 1}: no valid message; silent")
+            seat.note(
+                f"council before turn {self.engine.turn} round {round_index + 1}: no valid message; silent"
+            )
             return Speech(slot=seat.slot, text="", auto=True)
         seat.note(f"council before turn {self.engine.turn} round {round_index + 1}: says {decision.say!r}")
         return Speech(slot=seat.slot, text=decision.say)
 
     # ---- phases ----------------------------------------------------------------------
+
+    def record_memory(self, seat: SeatRuntime, phase: str, action: dict, applied: bool) -> None:
+        if self.trajectory is not None:
+            assert seat.brain is not None
+            attempt = seat.brain.memory_attempts[-1]
+            if applied:
+                attempt.accepted = True
+                attempt.rejection_reason = None
+            self.trajectory.record(
+                decision_id=f"memory-{phase}-{seat.slot}",
+                seat=seat.slot,
+                observation=attempt.prompt,
+                prompt=attempt.prompt,
+                attempts=[attempt],
+                executed_action=action,
+                fallback_origin=None if applied else "memory-unchanged",
+                terminal=self.engine.finished,
+            )
 
     async def hold_council(self) -> None:
         """Fishers speak one at a time in a rotating order; every round of a council keeps the same order."""
@@ -280,8 +403,22 @@ class Episode:
             speeches: list[Speech] = []
             for slot in order:
                 think_turns = self.think_turns_now()
-                speech = await self.council_decision(self.seats[slot], round_index, order, rounds, speeches, think_turns)
+                speech = await self.council_decision(
+                    self.seats[slot], round_index, order, rounds, speeches, think_turns
+                )
                 speeches.append(speech)
+                if self.trajectory is not None:
+                    seat = self.seats[slot]
+                    self.trajectory.record(
+                        decision_id=f"council-{self.engine.turn}-{round_index}-{slot}",
+                        seat=slot,
+                        observation=seat.pending_observation,
+                        prompt=seat.pending_prompt,
+                        attempts=seat.pending_attempts,
+                        executed_action={"say": speech.text},
+                        fallback_origin="silent" if speech.auto else None,
+                        terminal=False,
+                    )
                 await self.broadcast(
                     {
                         "type": "speech",
@@ -293,7 +430,9 @@ class Episode:
                 )
             rounds.append(speeches)
         record = self.engine.record_commune(rounds, order)
-        log(f"council before turn {record.before_turn}: {sum(1 for r in rounds for s in r if s.text)} messages")
+        log(
+            f"council before turn {record.before_turn}: {sum(1 for r in rounds for s in r if s.text)} messages"
+        )
         await self.broadcast({"type": "commune", "commune": record.model_dump()})
 
     async def fishing_turn(self) -> None:
@@ -301,6 +440,18 @@ class Episode:
         think_turns = self.think_turns_now()
         actions = await asyncio.gather(*(self.fishing_decision(seat, think_turns) for seat in self.seats))
         record = self.engine.resolve_turn(list(actions))
+        if self.trajectory is not None:
+            for seat, action in zip(self.seats, actions, strict=True):
+                self.trajectory.record(
+                    decision_id=f"fishing-{record.t}-{seat.slot}",
+                    seat=seat.slot,
+                    observation=seat.pending_observation,
+                    prompt=seat.pending_prompt,
+                    attempts=seat.pending_attempts,
+                    executed_action=action.model_dump(mode="json"),
+                    fallback_origin="repeat-last-effort" if action.auto else None,
+                    terminal=self.engine.finished,
+                )
         log(
             f"turn {record.t}: stock {record.stock_before:.0f} -> {record.stock_after:.0f}, "
             f"catch {sum(record.catch)}, gifts {len(record.gift)}, punishments {len(record.punish)}, auto {record.auto}"
@@ -322,18 +473,13 @@ class Episode:
                 return
             if self.think_turns_now(reserve_scratchpad=False) < 0:
                 return
-            observation = (
-                "SCRATCHPAD READ. The episode has not started. You are "
-                + self.engine.pseudonyms[seat.slot] + ".\n" + policy_roster(self.engine)
-                + "\nThis is your one read of your private scratchpad. You may carry notes into your episode notebook. "
-                + f"Reply with {{\"notebook\": \"<up to {self.config.llm.notebook_max_chars} characters>\"}}."
-                + "\nCompacted summary:\n" + seat.scratchpad.summary
-                + "\nRecent notes (oldest first, newest last):\n"
-                + "\n\n".join(f"Note {index}:\n{note}" for index, note in enumerate(seat.scratchpad.notes, 1))
-            )
+            observation = scratchpad_read_observation(self.engine, seat.slot, seat.scratchpad)
             reply = await scratchpad_decision(seat.brain, self.transport, self.engine, observation, seat.note)
             if reply is not None and isinstance(reply.get("notebook"), str):
                 seat.brain.notebook = clip(reply["notebook"], self.config.llm.notebook_max_chars)
+                self.record_memory(seat, "read", {"notebook": seat.brain.notebook}, True)
+            else:
+                self.record_memory(seat, "read", {"notebook": seat.brain.notebook}, False)
             seat.note("scratchpad read phase complete")
 
         await asyncio.gather(*(read(seat) for seat in self.seats))
@@ -348,34 +494,37 @@ class Episode:
 
         async def prepare(seat: SeatRuntime) -> dict | None:
             if (
-                seat.brain is None or self.transport is None or not seat.scratchpad_loaded
+                seat.brain is None
+                or self.transport is None
+                or not seat.scratchpad_loaded
                 or self.think_turns_now(reserve_scratchpad=False) < 0
             ):
                 return None
-            observation = (
-                "SCRATCHPAD WRITE. The episode is over. This is your one optional scratchpad update. "
-                "Reply with {\"scratchpad_append\": \"<new notes>\"}, or {} to leave memory unchanged. "
-                f"Identical souls share one {SCRATCHPAD_NOTE_BYTES}-byte contribution per episode. "
-                f"Your seat may contribute at most {note_limits[seat.slot]} UTF-8 bytes, allowing for separators between seats. "
-                "Older notes may be compacted into a summary. "
-                "Invalid or oversized contributions are discarded.\n\n"
-                + final_observation(self.engine, seat.slot, seat.brain.notebook)
+            observation = scratchpad_write_observation(
+                self.engine, seat.slot, seat.brain.notebook, note_limits[seat.slot]
             )
+            seat.memory_write_requested = True
             return await scratchpad_decision(seat.brain, self.transport, self.engine, observation, seat.note)
 
         replies = await asyncio.gather(*(prepare(seat) for seat in self.seats))
         for seat, reply in zip(self.seats, replies, strict=True):
             if reply is None:
+                if seat.memory_write_requested:
+                    self.record_memory(seat, "write", {}, False)
                 continue
             if set(reply) != {"scratchpad_append"} or not isinstance(reply["scratchpad_append"], str):
+                self.record_memory(seat, "write", {}, False)
                 continue
             if len(reply["scratchpad_append"].encode("utf-8")) > note_limits[seat.slot]:
+                self.record_memory(seat, "write", {}, False)
                 seat.note("scratchpad update exceeds seat contribution allowance")
                 continue
             try:
                 self.scratchpads.append(self.engine.policy_ids[seat.slot], reply["scratchpad_append"])
                 seat.note("scratchpad saved")
+                self.record_memory(seat, "write", {"scratchpad_append": reply["scratchpad_append"]}, True)
             except (OSError, ValueError) as error:
+                self.record_memory(seat, "write", {}, False)
                 seat.note(f"scratchpad update failed: {error}")
 
     async def run(self) -> None:
@@ -402,6 +551,13 @@ class Episode:
     def finalize(self) -> None:
         """Seat logs and status first, replay next, results last: results are the completion marker."""
         results = self.engine.results()
+        if self.trajectory is not None:
+            self.trajectory.finish(
+                outcome=results,
+                participant_outcomes={str(slot): score for slot, score in enumerate(results["scores"])},
+                completed=self.engine.finished,
+            )
+            self.trajectory.write(local_path(os.environ["COGAME_SAVE_TRAJECTORY_URI"]))
         if self.config.reveal_models:
             results["models"] = [seat.soul.model for seat in self.seats]
         states = []
@@ -409,7 +565,11 @@ class Episode:
             brain = seat.brain
             seat.note(
                 f"episode over: {self.engine.fish[seat.slot]} fish"
-                + (f"; {brain.calls} model calls, {brain.failures} failures, {brain.fallbacks} fallbacks" if brain else "")
+                + (
+                    f"; {brain.calls} model calls, {brain.failures} failures, {brain.fallbacks} fallbacks"
+                    if brain
+                    else ""
+                )
             )
             seat.log.close()
             states.append({"slot": seat.slot, "state": "exited", "exit_code": 0, "reason": "Completed"})
@@ -429,7 +589,9 @@ class Episode:
                 "wall_seconds": round(time.monotonic() - self.started, 1),
             }
         write_json_atomic(local_path(self.artifacts.results_uri), results)
-        log(f"episode over: scores {results['scores']}, final stock {results['final_stock']}, collapsed {results['collapsed']}")
+        log(
+            f"episode over: scores {results['scores']}, final stock {results['final_stock']}, collapsed {results['collapsed']}"
+        )
 
 
 # ---- HTTP surface ---------------------------------------------------------------------------
