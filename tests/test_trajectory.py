@@ -1,4 +1,5 @@
 import json
+import subprocess
 from uuid import uuid4
 
 import aiohttp
@@ -90,7 +91,7 @@ async def test_native_attempts_join_private_memory_speech_and_actions(tmp_path, 
     monkeypatch.setenv("COGAME_SAVE_TRAJECTORY_URI", trajectory.as_uri())
     monkeypatch.setenv("COWORLD_EPISODE_ID", "native-fixture")
     monkeypatch.setenv("COWORLD_GAME_VERSION", "fixture")
-    monkeypatch.setenv("COWORLD_SOURCE_REVISION", "a" * 40)
+    monkeypatch.setenv("COWORLD_SOURCE_REVISION", subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip())
     monkeypatch.setenv("COWORLD_GAME_IMAGE_DIGEST", "sha256:" + "d" * 64)
     monkeypatch.setenv("COWORLD_LLM_TEMPERATURE", "0")
     try:
@@ -109,6 +110,9 @@ async def test_native_attempts_join_private_memory_speech_and_actions(tmp_path, 
     records = [json.loads(line) for line in trajectory.read_text().splitlines()]
     assert records[-1]["outcome"]["scores"] == results["scores"]
     attempts = [a for r in records[:-1] for a in r["attempts"] if a["origin"] == "model"]
+    archive_path = tmp_path / "native-call-archives.json"
+    archive_path.write_text(json.dumps(archives) + "\n")
+    archive_path.chmod(0o600)
     assert len(attempts) == len(archives)
     assert {a["platform_call_id"] for a in attempts} == set(archives)
     assert {a["inference_mode"] for a in attempts} == {"memory", "speech", "text_action"}
@@ -150,7 +154,7 @@ async def test_failed_native_responses_survive_complete_fallback_episode(
     monkeypatch.setenv("COGAME_SAVE_TRAJECTORY_URI", trajectory.as_uri())
     monkeypatch.setenv("COWORLD_EPISODE_ID", f"native-failure-{mode}")
     monkeypatch.setenv("COWORLD_GAME_VERSION", "fixture")
-    monkeypatch.setenv("COWORLD_SOURCE_REVISION", "a" * 40)
+    monkeypatch.setenv("COWORLD_SOURCE_REVISION", subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip())
     try:
         async with aiohttp.ClientSession() as session:
             transport = Transport(f"http://127.0.0.1:{unused_tcp_port}", None, 2, session)
@@ -169,6 +173,9 @@ async def test_failed_native_responses_survive_complete_fallback_episode(
     model_rows = [row for row in records[:-1] if row["seat"] == "0"]
     assert model_rows and all(row["action_status"] == "fallback" for row in model_rows)
     attempts = [attempt for row in model_rows for attempt in row["attempts"]]
+    archive_path = tmp_path / "native-call-archives.json"
+    archive_path.write_text(json.dumps(archives) + "\n")
+    archive_path.chmod(0o600)
     assert len(attempts) == len(archives)
     for attempt in attempts:
         request, raw = archives[attempt["platform_call_id"]]

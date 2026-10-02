@@ -143,5 +143,30 @@ def test_language_teacher_uses_registered_scripted_soul():
     assert result["kind"] == "accepted"
     for _ in range(7):
         observation = result["observation"]
-        result = session.step({"decision_id": observation["decision_id"], "response": session.teacher()["response"]})
+        result = session.step(
+            {"decision_id": observation["decision_id"], "response": session.teacher()["response"]}
+        )
     assert session.engine.last_effort == [1.0] * 8
+
+
+def test_language_teacher_and_prompt_ignore_hidden_lake_and_fortune():
+    session = TrainingSession("quiet-lake", "text", 3, [ROOT / "souls/enforcer.md"] * 8, None)
+    observation = session.reset({"seed": "hidden-view", "players": 8})
+    for _ in range(8):
+        result = session.step(
+            {"decision_id": observation["decision_id"], "response": session.teacher()["response"]}
+        )
+        observation = result["observation"]
+    prompt = json.dumps(session.observation(), sort_keys=True)
+    teacher = session.teacher()
+    session.engine.stock *= 0.5
+    session.engine.lake.capacity *= 2
+    session.engine.lake.growth_rate *= 0.5
+    session.engine.lake.collapse_threshold *= 0.5
+    session.engine.turn_limit += 10
+    for turn in session.engine.turns:
+        turn.stock_before *= 0.2
+        turn.stock_after *= 0.3
+        turn.fortune = [0.5] * 8
+    assert json.dumps(session.observation(), sort_keys=True) == prompt
+    assert session.teacher() == teacher
