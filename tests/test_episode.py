@@ -117,6 +117,10 @@ async def test_complete_private_teacher_trajectory_matches_applied_actions(tmp_p
     records = complete["decisions"] + [complete["episode"]]
     assert records[-1]["event_type"] == "episode" and records[-1]["status"] == "completed"
     assert records[-1]["outcome"]["scores"] == results["scores"]
+    effects = records[-1]["outcome"]["engine_effects"]
+    assert effects["turns"] == replay["turns"]
+    assert effects["councils"] == replay["communes"]
+    assert effects["lake"] == replay["lake"]
     decisions = records[:-1]
     assert len(decisions) == 24 + sum(len(r) for c in replay["communes"] for r in c["rounds"])
     for index, record in enumerate(decisions):

@@ -12,6 +12,8 @@ from uuid import UUID, uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, StrictBool, StrictInt, model_validator
 
+from overfished.engine import CommuneRecord, Lake, TurnRecord
+
 
 class Attempt(BaseModel):
     model_config = ConfigDict(
@@ -74,6 +76,16 @@ class AuxiliaryRecord(BaseModel):
     source_revision: str
     status: Literal["pending_auxiliary", "joined_auxiliary"]
     attempts: list[PendingAttempt]
+
+
+class EngineEffects(BaseModel):
+    """Actual engine transitions, separate from the controls submitted by each policy."""
+
+    model_config = ConfigDict(extra="forbid", allow_inf_nan=False, hide_input_in_errors=True)
+    lake: Lake
+    turn_limit: int
+    turns: list[TurnRecord]
+    councils: list[CommuneRecord]
 
 
 class DecisionRecord(BaseModel):
@@ -182,9 +194,11 @@ class Trajectory:
             status="joined_auxiliary" if self.finished else "pending_auxiliary",
             attempts=list(self.pending.values()),
         )
-        descriptor = os.open(self.pending_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        temporary = self.pending_path.with_name(self.pending_path.name + f".{uuid4()}.partial")
+        descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
         with os.fdopen(descriptor, "w") as handle:
             handle.write(record.model_dump_json() + "\n")
+        os.replace(temporary, self.pending_path)
 
     def record(
         self,

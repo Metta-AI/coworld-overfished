@@ -55,7 +55,7 @@ from overfished.seats import (
     write_player_status,
 )
 from overfished.soul import Soul, SoulError, parse_soul
-from overfished.trajectory import Attempt, Trajectory
+from overfished.trajectory import Attempt, EngineEffects, Trajectory
 from overfished.viewer_build import DEFAULT_VIEWER_DIR, build_index_html
 
 
@@ -622,6 +622,12 @@ class Episode:
                             "interrupted": True,
                             "runtime_configuration": self.config.model_dump(mode="json"),
                             "seed": self.engine.seed,
+                            "engine_effects": EngineEffects(
+                                lake=self.engine.lake,
+                                turn_limit=self.engine.turn_limit,
+                                turns=self.engine.turns,
+                                councils=self.engine.communes,
+                            ).model_dump(mode="json"),
                             "unapplied_attempts": [item.model_dump(mode="json") for item in pending],
                         },
                         participant_outcomes={},
@@ -647,6 +653,13 @@ class Episode:
                     "runtime_configuration": self.config.model_dump(mode="json"),
                     "seed": self.engine.seed,
                     "policy_ids": self.policy_ids,
+                    "memory_mode": "append-v1" if self.scratchpads is not None else "disabled",
+                    "engine_effects": EngineEffects(
+                        lake=self.engine.lake,
+                        turn_limit=self.engine.turn_limit,
+                        turns=self.engine.turns,
+                        councils=self.engine.communes,
+                    ).model_dump(mode="json"),
                 },
                 participant_outcomes={str(slot): score for slot, score in enumerate(results["scores"])},
                 completed=self.engine.finished,

@@ -1,4 +1,5 @@
 import json
+import os
 import subprocess
 from uuid import uuid4
 
@@ -9,7 +10,11 @@ from test_episode import SOULS, VILLAGER, run_episode
 from overfished.llm import Transport
 from overfished.trajectory import Attempt, Trajectory
 
-SOURCE_REVISION = subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
+SOURCE_REVISION = (
+    os.environ["COWORLD_SOURCE_REVISION"]
+    if "COWORLD_SOURCE_REVISION" in os.environ
+    else subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
+)
 
 
 def test_recorder_rejects_applied_action_mismatch(tmp_path):
@@ -199,3 +204,34 @@ async def test_failed_native_responses_survive_complete_fallback_episode(
         assert attempt["raw_response"] == raw
         assert not attempt["accepted"] and attempt["rejection_reason"]
     assert "PRIVATE" not in json.dumps(replay)
+
+
+def test_failed_latest_snapshot_preserves_previous_received_facts_and_new_private_partial(
+    tmp_path, monkeypatch
+):
+    recorder = Trajectory(
+        episode_id="snapshot",
+        game_version="test",
+        source_revision="a" * 40,
+        seed_family="overfished-1",
+        image_digest=None,
+        destination=tmp_path / "complete.jsonl",
+    )
+    attempt = Attempt(policy="fixture", inference_mode="text_action", prompt=[], response="first actual text")
+    recorder.observe(0, attempt, [])
+    previous = recorder.pending_path.read_bytes()
+    attempt.response = "second actual text"
+
+    def fail_replace(source, destination):
+        raise OSError("owned snapshot replacement failed")
+
+    monkeypatch.setattr("overfished.trajectory.os.replace", fail_replace)
+    try:
+        with pytest.raises(OSError, match="snapshot replacement"):
+            recorder.observe(0, attempt, [])
+        assert recorder.pending_path.read_bytes() == previous
+        partial = next(tmp_path.glob("*.partial"))
+        assert "second actual text" in partial.read_text()
+        assert partial.stat().st_mode & 0o777 == 0o600
+    finally:
+        recorder.spool.close()
