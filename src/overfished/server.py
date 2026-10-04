@@ -33,6 +33,7 @@ from overfished.llm import (
     scratchpad_read_observation,
     scratchpad_write_observation,
     seat_system_prompt,
+    teacher_action_response,
     transport_from_env,
     turn_observation,
 )
@@ -319,7 +320,9 @@ class Episode:
                     origin="teacher",
                     inference_mode="text_action",
                     prompt=seat.pending_prompt,
-                    response=json.dumps(action.model_dump(mode="json")),
+                    response=teacher_action_response(
+                        action, self.engine, SeatBrain(seat.slot, seat.soul, system)
+                    ),
                     parsed_action=action.model_dump(mode="json"),
                     accepted=True,
                     rejection_reason=None,

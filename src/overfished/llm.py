@@ -770,6 +770,34 @@ def parse_decision_reply(
     )
 
 
+class NamedTransfer(BaseModel):
+    model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
+    target: str
+    fish: int = Field(ge=1)
+
+
+class ActionText(BaseModel):
+    model_config = ConfigDict(extra="forbid", allow_inf_nan=False, hide_input_in_errors=True)
+    effort: float = Field(ge=0, le=1)
+    punish: list[NamedTransfer]
+    gift: list[NamedTransfer]
+
+
+def teacher_action_response(action: Action, engine: Engine, brain: SeatBrain) -> str:
+    """Render source-owned controls through the ordinary seated language contract."""
+    assert not action.auto
+    text = ActionText(
+        effort=action.effort,
+        punish=[
+            NamedTransfer(target=engine.pseudonyms[item.target], fish=item.fish) for item in action.punish
+        ],
+        gift=[NamedTransfer(target=engine.pseudonyms[item.target], fish=item.fish) for item in action.gift],
+    ).model_dump_json()
+    parsed = parse_decision_reply(text, brain, engine, False)
+    assert isinstance(parsed, ActionReply) and parsed.action == action
+    return text
+
+
 def seat_system_prompt(engine: Engine, slot: int, soul: Soul, *, persistent_memory: bool) -> str:
     return (
         soul.text

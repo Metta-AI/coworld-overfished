@@ -23,6 +23,7 @@ from overfished.llm import (
     scratchpad_read_observation,
     scratchpad_write_observation,
     seat_system_prompt,
+    teacher_action_response,
     turn_observation,
 )
 from overfished.memory import SCRATCHPAD_NOTE_BYTES, ScratchpadStore, policy_id
@@ -273,7 +274,11 @@ class TrainingSession:
         if self.mode == "choice":
             return {"response": compact({"choice": EFFORTS.index(0.4) * len(SOCIAL)})}
         return {
-            "response": policy.act(ScriptedView.from_engine(self.engine, self.seat)).model_dump_json(),
+            "response": teacher_action_response(
+                policy.act(ScriptedView.from_engine(self.engine, self.seat)),
+                self.engine,
+                self.brains[self.seat],
+            ),
             "policy": f"scripted/{policy.name}",
         }
 

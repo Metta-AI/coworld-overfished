@@ -115,3 +115,31 @@ def test_manifest_declares_named_players_inline():
     items = players["items"]
     assert items["type"] == "object" and items["properties"]["name"]["type"] == "string"
     assert "$ref" not in json.dumps(items)
+
+
+def test_teacher_pseudonym_targets_roundtrip_through_ordinary_native_parser():
+    import json
+
+    from overfished.engine import Gift, Punishment
+    from overfished.llm import ActionReply, SeatBrain, parse_decision_reply, teacher_action_response
+    from overfished.scripted import ScriptedView
+
+    game = engine()
+    soul = parse_soul(b"#!scripted/enforcer\neffort: 0.4", ALIASES, SCRIPTED)
+    brain = SeatBrain(0, soul, "ordinary private system")
+    action = Action(effort=0.4, punish=[Punishment(target=1, fish=2)], gift=[Gift(target=2, fish=1)])
+    text = teacher_action_response(action, game, brain)
+    wire = json.loads(text)
+    assert "auto" not in wire
+    assert wire["punish"][0]["target"] == game.pseudonyms[1]
+    assert wire["gift"][0]["target"] == game.pseudonyms[2]
+    parsed = parse_decision_reply(text, brain, game, False)
+    assert isinstance(parsed, ActionReply) and parsed.action == action
+    assert isinstance(parse_action(action.model_dump(), game, 0), str)
+
+    enforcer = scripted_policy("enforcer", soul.text).act(
+        ScriptedView(slot=0, num_players=3, own_fish=5, last_catches=(1, 20, 2))
+    )
+    assert enforcer.punish == [Punishment(target=1, fish=1)]
+    parsed_enforcer = parse_decision_reply(teacher_action_response(enforcer, game, brain), brain, game, False)
+    assert isinstance(parsed_enforcer, ActionReply) and parsed_enforcer.action == enforcer
