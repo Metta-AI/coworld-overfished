@@ -22,6 +22,7 @@ from aiohttp import web
 
 from overfished.config import GameConfig
 from overfished.engine import Action, Engine, Speech
+from overfished.lifecycle import OwnershipUnsettled, cleanup_deadline, main_owned, owned_task, settle
 from overfished.llm import (
     SeatBrain,
     Transport,
@@ -32,6 +33,7 @@ from overfished.llm import (
     scratchpad_read_observation,
     scratchpad_write_observation,
     seat_system_prompt,
+    teacher_action_response,
     transport_from_env,
     turn_observation,
 )
@@ -42,7 +44,7 @@ from overfished.memory import (
     ScratchpadStore,
     policy_id,
 )
-from overfished.scripted import SCRIPTED_NAMES, ScriptedPolicy, fallback_action, scripted_policy
+from overfished.scripted import SCRIPTED_NAMES, ScriptedPolicy, ScriptedView, fallback_action, scripted_policy
 from overfished.seats import (
     SeatLog,
     SeatsDocument,
@@ -54,7 +56,7 @@ from overfished.seats import (
     write_player_status,
 )
 from overfished.soul import Soul, SoulError, parse_soul
-from overfished.trajectory import Attempt, Trajectory
+from overfished.trajectory import Attempt, EngineEffects, Trajectory
 from overfished.viewer_build import DEFAULT_VIEWER_DIR, build_index_html
 
 
@@ -94,6 +96,7 @@ class Episode:
     seats: list[SeatRuntime]
     transport: Transport | None
     artifacts: ArtifactPaths
+    policy_ids: list[str]
     status_uri: str | None
     scratchpads: ScratchpadStore | HostedScratchpadStore | None
     started: float = field(default_factory=time.monotonic)
@@ -102,6 +105,10 @@ class Episode:
     seat_subscribers: dict[int, set[web.WebSocketResponse]] = field(default_factory=dict)
     done: asyncio.Event = field(default_factory=asyncio.Event)
     trajectory: Trajectory | None = None
+    tasks: set[asyncio.Task] = field(default_factory=set)
+    ownership_joined: bool = False
+    cleanup_end: float | None = None
+    surface_joined: bool = True
 
     def __post_init__(self) -> None:
         if "COGAME_SAVE_TRAJECTORY_URI" in os.environ:
@@ -111,7 +118,35 @@ class Episode:
                 source_revision=os.environ["COWORLD_SOURCE_REVISION"],
                 seed_family=f"overfished-{self.engine.seed}",
                 image_digest=os.environ.get("COWORLD_GAME_IMAGE_DIGEST"),
+                destination=local_path(os.environ["COGAME_SAVE_TRAJECTORY_URI"]),
             )
+        if self.transport is not None:
+            self.transport.observe = self.observe_attempt
+
+    def observe_attempt(self, slot: int, attempt: Attempt) -> None:
+        if self.trajectory is not None:
+            assert self.transport is not None
+            pairs = self.transport.received_header_pairs[attempt.attempt_id]
+            self.trajectory.observe(slot, attempt, pairs)
+
+    async def parallel(self, work: list) -> list:
+        tasks = [owned_task(item) for item in work]
+        self.tasks.update(tasks)
+        completed = False
+        try:
+            await asyncio.wait(tasks)
+            results = [task.result() for task in tasks]
+            completed = True
+            return results
+        finally:
+            if not completed and self.cleanup_end is None:
+                self.cleanup_end = cleanup_deadline()
+            deadline = self.cleanup_end if self.cleanup_end is not None else cleanup_deadline()
+            joined = await settle(set(tasks), deadline, cancel=True)
+            if joined:
+                self.tasks.difference_update(tasks)
+            else:
+                raise OwnershipUnsettled("seat actors did not join before episode cleanup")
 
     # ---- construction ----------------------------------------------------------------
 
@@ -124,7 +159,7 @@ class Episode:
         transport: Transport | None,
         artifacts: ArtifactPaths,
         scratchpad_dir: Path | None = None,
-    ) -> "Episode":
+    ) -> Episode:
         if len(document.seats) != config.num_players:
             raise ValueError(
                 f"seats document has {len(document.seats)} seats but the config seats {config.num_players}"
@@ -139,7 +174,11 @@ class Episode:
         ):
             scratchpads = ScratchpadStore(scratchpad_dir or Path(os.environ["OVERFISHED_SCRATCHPAD_DIR"]))
         soul_data = [read_uri(seat.file_uri) for seat in document.seats]
-        engine = Engine(config, seed, [policy_id(data) for data in soul_data])
+        identities = [policy_id(data) for data in soul_data]
+        for seat, data, identity in zip(document.seats, soul_data, identities, strict=True):
+            if seat.content_hash != identity or seat.size_bytes != len(data):
+                raise ValueError("staged soul does not match its registered hash and size")
+        engine = Engine(config, seed, identities)
         seats: list[SeatRuntime] = []
         logs = [SeatLog(local_path(seat.log_uri)) for seat in document.seats]
         for seat, seat_log in zip(document.seats, logs, strict=True):
@@ -162,7 +201,7 @@ class Episode:
                         other.close()
                     raise RuntimeError(
                         f"seat {seat.slot} needs model {soul.model} but no LLM transport is configured: set "
-                        "OPENROUTER_API_KEY locally, or run hosted where the sidecar provides COWORLD_LLM_ENDPOINT"
+                        "COWORLD_LLM_ENDPOINT to the native sidecar"
                     )
                 brain = SeatBrain(
                     slot=seat.slot,
@@ -186,6 +225,7 @@ class Episode:
             seats=seats,
             transport=transport,
             artifacts=artifacts,
+            policy_ids=identities,
             status_uri=document.player_status_uri,
             scratchpads=scratchpads,
         )
@@ -193,7 +233,32 @@ class Episode:
     # ---- live feed -------------------------------------------------------------------
 
     def snapshot(self) -> dict:
-        return {"type": "snapshot", "phase": self.phase, "live": not self.done.is_set(), "replay": self.engine.replay()}
+        return {
+            "type": "snapshot",
+            "phase": self.phase,
+            "live": not self.done.is_set(),
+            "replay": self.engine.replay(),
+        }
+
+    async def send_socket(self, ws: web.WebSocketResponse, data: str) -> None:
+        deadline = cleanup_deadline()
+        writer = owned_task(ws.send_str(data))
+        self.tasks.add(writer)
+        try:
+            done, _ = await asyncio.wait(
+                {writer}, timeout=max(0, deadline - asyncio.get_running_loop().time())
+            )
+            if not done:
+                raise TimeoutError("observer write exceeded its absolute budget")
+            writer.result()
+        finally:
+            joined = await settle({writer}, deadline, cancel=True)
+            if joined:
+                self.tasks.discard(writer)
+            else:
+                if self.cleanup_end is None:
+                    self.cleanup_end = deadline
+                raise OwnershipUnsettled("observer writer did not join")
 
     async def broadcast(self, message: dict) -> None:
         data = json.dumps(message)
@@ -202,7 +267,7 @@ class Episode:
             if ws.closed:
                 stale.append(ws)
                 continue
-            await ws.send_str(data)
+            await self.send_socket(ws, data)
         for ws in stale:
             self.subscribers.discard(ws)
 
@@ -215,7 +280,7 @@ class Episode:
             if ws.closed:
                 subscribers.discard(ws)
                 continue
-            await ws.send_str(data)
+            await self.send_socket(ws, data)
 
     # ---- budget ----------------------------------------------------------------------
 
@@ -248,14 +313,16 @@ class Episode:
         ]
         seat.pending_observation = observation
         if seat.scripted is not None:
-            action = seat.scripted.act(self.engine, seat.slot)
+            action = seat.scripted.act(ScriptedView.from_engine(self.engine, seat.slot))
             seat.pending_attempts = [
                 Attempt(
                     policy=f"scripted/{seat.scripted.name}",
                     origin="teacher",
                     inference_mode="text_action",
                     prompt=seat.pending_prompt,
-                    response=json.dumps(action.model_dump(mode="json")),
+                    response=teacher_action_response(
+                        action, self.engine, SeatBrain(seat.slot, seat.soul, system)
+                    ),
                     parsed_action=action.model_dump(mode="json"),
                     accepted=True,
                     rejection_reason=None,
@@ -326,7 +393,7 @@ class Episode:
         ]
         seat.pending_observation = observation
         if seat.scripted is not None:
-            text = seat.scripted.say(self.engine, seat.slot, round_index)
+            text = seat.scripted.say(round_index)
             speech = Speech(slot=seat.slot, text=text[: self.config.llm.say_max_chars])
             seat.pending_attempts = [
                 Attempt(
@@ -438,7 +505,7 @@ class Episode:
     async def fishing_turn(self) -> None:
         self.phase = "fishing"
         think_turns = self.think_turns_now()
-        actions = await asyncio.gather(*(self.fishing_decision(seat, think_turns) for seat in self.seats))
+        actions = await self.parallel([self.fishing_decision(seat, think_turns) for seat in self.seats])
         record = self.engine.resolve_turn(list(actions))
         if self.trajectory is not None:
             for seat, action in zip(self.seats, actions, strict=True):
@@ -460,13 +527,14 @@ class Episode:
 
     async def read_scratchpads(self) -> None:
         assert self.scratchpads is not None
+        scratchpads = self.scratchpads
         self.phase = "scratchpad_read"
 
         async def read(seat: SeatRuntime) -> None:
             if seat.brain is None or self.transport is None:
                 return
             try:
-                seat.scratchpad = self.scratchpads.read(self.engine.policy_ids[seat.slot])
+                seat.scratchpad = scratchpads.read(self.policy_ids[seat.slot])
                 seat.scratchpad_loaded = True
             except (OSError, ValueError) as error:
                 seat.note(f"scratchpad read failed: {error}")
@@ -482,14 +550,14 @@ class Episode:
                 self.record_memory(seat, "read", {"notebook": seat.brain.notebook}, False)
             seat.note("scratchpad read phase complete")
 
-        await asyncio.gather(*(read(seat) for seat in self.seats))
+        await self.parallel([read(seat) for seat in self.seats])
 
     async def write_scratchpads(self) -> None:
         assert self.scratchpads is not None
         self.phase = "scratchpad_write"
         note_limits = {}
         for seat in self.seats:
-            shared_seats = self.engine.policy_ids.count(self.engine.policy_ids[seat.slot])
+            shared_seats = self.policy_ids.count(self.policy_ids[seat.slot])
             note_limits[seat.slot] = (SCRATCHPAD_NOTE_BYTES - (shared_seats - 1)) // shared_seats
 
         async def prepare(seat: SeatRuntime) -> dict | None:
@@ -506,7 +574,7 @@ class Episode:
             seat.memory_write_requested = True
             return await scratchpad_decision(seat.brain, self.transport, self.engine, observation, seat.note)
 
-        replies = await asyncio.gather(*(prepare(seat) for seat in self.seats))
+        replies = await self.parallel([prepare(seat) for seat in self.seats])
         for seat, reply in zip(self.seats, replies, strict=True):
             if reply is None:
                 if seat.memory_write_requested:
@@ -520,7 +588,7 @@ class Episode:
                 seat.note("scratchpad update exceeds seat contribution allowance")
                 continue
             try:
-                self.scratchpads.append(self.engine.policy_ids[seat.slot], reply["scratchpad_append"])
+                self.scratchpads.append(self.policy_ids[seat.slot], reply["scratchpad_append"])
                 seat.note("scratchpad saved")
                 self.record_memory(seat, "write", {"scratchpad_append": reply["scratchpad_append"]}, True)
             except (OSError, ValueError) as error:
@@ -528,36 +596,78 @@ class Episode:
                 seat.note(f"scratchpad update failed: {error}")
 
     async def run(self) -> None:
-        log(
-            f"episode start: {self.config.num_players} seats, {self.engine.turn_limit} turns (hidden from seats), seed {self.engine.seed}, "
-            f"lake capacity {self.engine.lake.capacity:.0f} (hidden from seats), transport "
-            f"{self.transport.describe if self.transport else 'none (scripted seats only)'}"
-        )
-        if self.scratchpads is not None:
-            await self.read_scratchpads()
-        while not self.engine.finished:
-            if self.engine.commune_due():
-                await self.hold_council()
-            await self.fishing_turn()
-        if self.scratchpads is not None:
-            await self.write_scratchpads()
-        self.phase = "done"
-        self.finalize()
-        if isinstance(self.scratchpads, HostedScratchpadStore):
-            await asyncio.to_thread(self.scratchpads.flush)
+        log(f"episode start: {self.config.num_players} seats; native internal actors")
+        completed = False
+        try:
+            if self.scratchpads is not None:
+                await self.read_scratchpads()
+            while not self.engine.finished:
+                if self.engine.commune_due():
+                    await self.hold_council()
+                await self.fishing_turn()
+            if self.scratchpads is not None:
+                await self.write_scratchpads()
+            if isinstance(self.scratchpads, HostedScratchpadStore):
+                self.scratchpads.flush()
+            completed = True
+        finally:
+            deadline = self.cleanup_end if self.cleanup_end is not None else cleanup_deadline()
+            if not completed and self.cleanup_end is None:
+                self.cleanup_end = deadline
+            joined = await settle(self.tasks, deadline, cancel=True)
+            pending = self.trajectory.pending.values() if self.trajectory is not None else []
+            readers_joined = all(item.attempt.response_reader_joined is not False for item in pending)
+            self.ownership_joined = joined and readers_joined
+            if self.ownership_joined and not completed:
+                if self.trajectory is not None:
+                    self.trajectory.finish(
+                        outcome={
+                            "interrupted": True,
+                            "runtime_configuration": self.config.model_dump(mode="json"),
+                            "seed": self.engine.seed,
+                            "engine_effects": EngineEffects(
+                                lake=self.engine.lake,
+                                turn_limit=self.engine.turn_limit,
+                                turns=self.engine.turns,
+                                councils=self.engine.communes,
+                            ).model_dump(mode="json"),
+                            "unapplied_attempts": [item.model_dump(mode="json") for item in pending],
+                        },
+                        participant_outcomes={},
+                        completed=False,
+                    )
+                    self.trajectory.write()
+                for seat in self.seats:
+                    seat.log.close()
+            if not self.ownership_joined:
+                raise OwnershipUnsettled("episode ownership unresolved; private spool remains writable")
+        self.phase = "finishing"
         await self.broadcast({"type": "end", "scores": self.engine.results()["scores"]})
-        self.done.set()
 
     def finalize(self) -> None:
         """Seat logs and status first, replay next, results last: results are the completion marker."""
+        if not self.ownership_joined or not self.surface_joined:
+            raise OwnershipUnsettled("public completion requires joined episode and observer ownership")
         results = self.engine.results()
         if self.trajectory is not None:
             self.trajectory.finish(
-                outcome=results,
+                outcome={
+                    **results,
+                    "runtime_configuration": self.config.model_dump(mode="json"),
+                    "seed": self.engine.seed,
+                    "policy_ids": self.policy_ids,
+                    "memory_mode": "append-v1" if self.scratchpads is not None else "disabled",
+                    "engine_effects": EngineEffects(
+                        lake=self.engine.lake,
+                        turn_limit=self.engine.turn_limit,
+                        turns=self.engine.turns,
+                        councils=self.engine.communes,
+                    ).model_dump(mode="json"),
+                },
                 participant_outcomes={str(slot): score for slot, score in enumerate(results["scores"])},
                 completed=self.engine.finished,
             )
-            self.trajectory.write(local_path(os.environ["COGAME_SAVE_TRAJECTORY_URI"]))
+            self.trajectory.write()
         if self.config.reveal_models:
             results["models"] = [seat.soul.model for seat in self.seats]
         states = []
@@ -589,6 +699,8 @@ class Episode:
                 "wall_seconds": round(time.monotonic() - self.started, 1),
             }
         write_json_atomic(local_path(self.artifacts.results_uri), results)
+        self.phase = "done"
+        self.done.set()
         log(
             f"episode over: scores {results['scores']}, final stock {results['final_stock']}, collapsed {results['collapsed']}"
         )
@@ -602,7 +714,9 @@ def _viewer_html() -> str:
     return build_index_html(source)
 
 
-def make_app(episode: Episode | None, config: GameConfig | None, replay_bytes: bytes | None) -> web.Application:
+def make_app(
+    episode: Episode | None, config: GameConfig | None, replay_bytes: bytes | None
+) -> web.Application:
     viewer_html = _viewer_html()
     app = web.Application()
 
@@ -642,7 +756,9 @@ ws.onmessage=(e)=>{{const m=JSON.parse(e.data);if(m.type==='log'){{document.getE
         ws = web.WebSocketResponse(heartbeat=None)
         await ws.prepare(request)
         episode.seat_subscribers.setdefault(slot, set()).add(ws)
-        await ws.send_str(json.dumps({"type": "seat", "slot": slot, "pseudonym": episode.engine.pseudonyms[slot]}))
+        await ws.send_str(
+            json.dumps({"type": "seat", "slot": slot, "pseudonym": episode.engine.pseudonyms[slot]})
+        )
         async for _message in ws:
             pass
         episode.seat_subscribers[slot].discard(ws)
@@ -656,7 +772,7 @@ ws.onmessage=(e)=>{{const m=JSON.parse(e.data);if(m.type==='log'){{document.getE
         await ws.prepare(request)
         if episode is not None:
             episode.subscribers.add(ws)
-            await ws.send_str(json.dumps(episode.snapshot()))
+            await episode.send_socket(ws, json.dumps(episode.snapshot()))
         else:
             await ws.send_str(json.dumps({"type": "replay", "replay": json.loads(replay_bytes or b"{}")}))
         async for _message in ws:
@@ -671,7 +787,9 @@ ws.onmessage=(e)=>{{const m=JSON.parse(e.data);if(m.type==='log'){{document.getE
     async def replay_json(_request: web.Request) -> web.Response:
         if replay_bytes is None:
             raise web.HTTPNotFound(text="not in replay mode")
-        return web.Response(body=replay_bytes, content_type="application/json", headers={"Access-Control-Allow-Origin": "*"})
+        return web.Response(
+            body=replay_bytes, content_type="application/json", headers={"Access-Control-Allow-Origin": "*"}
+        )
 
     app.router.add_get("/healthz", healthz)
     app.router.add_get("/client/player", client_player)
@@ -695,27 +813,39 @@ def choose_seed(config: GameConfig) -> int:
     return config.seed if config.seed > 0 else random.SystemRandom().randrange(1, 2**31)
 
 
-async def serve_episode(config: GameConfig, seed: int, document: SeatsDocument, artifacts: ArtifactPaths, host: str, port: int) -> int:
+async def close_http_surface(runner: web.AppRunner, deadline: float) -> None:
+    closer = owned_task(runner.cleanup())
+    if not await settle({closer}, deadline, cancel=False):
+        raise OwnershipUnsettled("HTTP observer surface did not join")
+    closer.result()
+
+
+async def serve_episode(
+    config: GameConfig, seed: int, document: SeatsDocument, artifacts: ArtifactPaths, host: str, port: int
+) -> int:
     """Coworld mode: HTTP surface plus one episode. Returns the process exit code."""
-    async with aiohttp.ClientSession() as session:
-        transport = transport_from_env(session, config.llm.timeout_seconds)
-        try:
-            episode = Episode.from_seats(config, seed, document, transport, artifacts)
-        except SoulError as error:
-            log(f"terminal player failure declared: {error}")
-            return 0
-        app = make_app(episode, config, None)
-        runner = web.AppRunner(app)
-        await runner.setup()
-        site = web.TCPSite(runner, host, port)
-        await site.start()
-        log(f"listening on {host}:{port}")
-        try:
-            await episode.run()
-            # Give the runner a moment to notice results and any viewer to receive the end frame.
-            await asyncio.sleep(2.0)
-        finally:
-            await runner.cleanup()
+    transport = transport_from_env(config.llm.timeout_seconds)
+    try:
+        episode = Episode.from_seats(config, seed, document, transport, artifacts)
+    except SoulError:
+        log("terminal player failure declared; private failure artifact retained")
+        return 0
+    app = make_app(episode, config, None)
+    episode.surface_joined = False
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, host, port)
+    await site.start()
+    log(f"listening on {host}:{port}")
+    try:
+        await episode.run()
+        # Keep the existing normal viewer grace; ownership credit and results follow cleanup.
+        await asyncio.sleep(2.0)
+    finally:
+        deadline = episode.cleanup_end if episode.cleanup_end is not None else cleanup_deadline()
+        await close_http_surface(runner, deadline)
+        episode.surface_joined = True
+    episode.finalize()
     return 0
 
 
@@ -727,16 +857,18 @@ async def serve_replay(replay_uri: str, host: str, port: int) -> int:
     site = web.TCPSite(runner, host, port)
     await site.start()
     log(f"replay mode listening on {host}:{port}")
-    while True:
-        await asyncio.sleep(3600)
+    try:
+        while True:
+            await asyncio.sleep(3600)
+    finally:
+        await close_http_surface(runner, cleanup_deadline())
 
 
 async def _fetch(uri: str) -> bytes:
-    async with aiohttp.ClientSession() as session:
-        async with session.get(uri) as response:
-            if response.status != 200:
-                raise RuntimeError(f"replay fetch failed: HTTP {response.status} for {uri}")
-            return await response.read()
+    async with aiohttp.ClientSession() as session, session.get(uri) as response:
+        if response.status != 200:
+            raise RuntimeError(f"replay fetch failed: HTTP {response.status} for {uri}")
+        return await response.read()
 
 
 def main_coworld() -> int:
@@ -744,7 +876,7 @@ def main_coworld() -> int:
     port = int(os.environ.get("COGAME_PORT", "8080"))
     replay_uri = os.environ.get("COGAME_LOAD_REPLAY_URI", "").strip()
     if replay_uri:
-        return asyncio.run(serve_replay(replay_uri, host, port))
+        return main_owned(serve_replay(replay_uri, host, port)) or 0
     if ("COGAME_MEMORY_INPUT_URI" in os.environ) != ("COGAME_MEMORY_OUTPUT_URI" in os.environ):
         raise RuntimeError("hosted memory requires both input and output URIs")
     config = load_config(os.environ["COGAME_CONFIG_URI"])
@@ -755,7 +887,7 @@ def main_coworld() -> int:
         replay_uri=os.environ["COGAME_SAVE_REPLAY_URI"],
         failure_uri=os.environ.get("COGAME_PLAYER_FAILURE_URI", (workdir / "player_failure.json").as_uri()),
     )
-    return asyncio.run(serve_episode(config, choose_seed(config), document, artifacts, host, port))
+    return main_owned(serve_episode(config, choose_seed(config), document, artifacts, host, port)) or 0
 
 
 if __name__ == "__main__":

@@ -25,11 +25,11 @@ episode, no player containers. Public repo: `Metta-AI/coworld-overfished`.
    `deepseek`, `glm`, `glm-flash`, `qwen`, `minimax`. Any canonical `vendor/model` OpenRouter slug also works. Full contract:
    [docs/PROTOCOL.md](docs/PROTOCOL.md).
 
-2. Try it locally against the bundled baselines (needs `OPENROUTER_API_KEY` for model seats):
+2. Try it locally against the bundled baselines (needs a native `COWORLD_LLM_ENDPOINT` for model seats):
 
    ```bash
    uv venv && uv pip install -e '.[test]'
-   OPENROUTER_API_KEY=... .venv/bin/overfished run --out runs/try --turns 10 \
+   COWORLD_LLM_ENDPOINT=http://127.0.0.1:8081 .venv/bin/overfished run --out runs/try --turns 10 \
      --soul my_soul.md --soul souls/examples/villager.md --soul souls/steady.md --soul souls/greedy.md
    ```
 
@@ -191,6 +191,34 @@ The last command reads one JSON object per line from stdin. Start with
 `{"kind":"reset","seed":"example","players":8}`; subsequent observations supply `decision_id` for
 `say` and `step` calls. A terminal observation reports the game's fish scores and bounded utilities.
 
+### Private complete episode evidence
+
+Set `COGAME_SAVE_TRAJECTORY_URI` to a private file URI together with `COWORLD_EPISODE_ID`,
+`COWORLD_GAME_VERSION`, and the full `COWORLD_SOURCE_REVISION`. The game writes one canonical
+complete-episode JSONL record. It streams applied decisions through a private spool and retains
+started, unapplied native attempts separately. Received bodies stay exact bytes; actual header pairs
+remain private auxiliary evidence. Public replay excludes notebooks, thinking, prompts, and native metadata.
+
+Native game-hosted learner calls use `/v1/chat/completions` and their actual seat header.
+`COWORLD_LLM_TEMPERATURE` and `COWORLD_LLM_TOP_P` freeze when the transport starts; both default to one.
+A registered checkpoint soul uses `#!checkpoint/<sha256>`. For a checkpoint without hidden reasoning,
+select an explicit game configuration containing `"llm":{"reasoning":{}}`; ordinary provider settings
+remain unchanged. Base and trained evaluation must use the same configuration and memory mode.
+
+Cancellation has one two-second owner budget. Joined interruption emits a private truncated episode,
+without scores. Unresolved actors or readers keep the private spool writable and withhold results and
+public replay completion. Received data does not prove a reader joined.
+
+`python -m tools.export_posttrain OUTPUT --variant pond --games 10 --soul ...` collects whole
+source-owned scripted games from committed source. Repeat `--soul` for every declared seat.
+The manifest binds each exact file hash, source, seed family, configuration, and policies.
+These are unreviewed audit corpora. Training labels require a content-bound external teacher review;
+model labels additionally require authenticated platform receipts. Synthetic HTTP tests establish
+protocol and engine action parity, without authenticated receipts or checkpoint strength evidence.
+
+The numeric choice bridge is a separate restricted research action space. Text mode uses the
+ordinary production parser and visibility; numeric certification does not qualify language behavior.
+
 ## Develop
 
 ```bash
@@ -228,7 +256,7 @@ viewer sources), `tools/` (build hook, manifest generator), `tests/`, `docs/`.
 
 Model calls: hosted, the game talks to the platform's LLM sidecar (`COWORLD_LLM_ENDPOINT`) with
 OpenAI-style chat completions and an `X-Coworld-Player-Slot` header so spend is billed to the seat; locally it
-uses `OPENROUTER_API_KEY` directly. Streaming is never used.
+uses the same native sidecar endpoint. Direct provider credentials are not a game transport. Streaming is never used.
 
 ## Roadmap
 

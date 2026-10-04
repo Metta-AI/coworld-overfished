@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -113,7 +114,7 @@ def test_quiet_lake_has_no_speech_turns() -> None:
 def test_jsonl_process_reuses_seeded_session() -> None:
     process = subprocess.Popen(
         [
-            str(ROOT / ".venv/bin/python"),
+            sys.executable,
             str(ROOT / "tools/training_bridge.py"),
             *[arg for _ in range(8) for arg in ("--soul", str(ROOT / "souls/steady.md"))],
         ],

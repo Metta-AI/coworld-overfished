@@ -179,5 +179,6 @@ Local runs use an append-only history under `--scratchpad-dir` (default `runs/sc
 note and byte bounds but no automatic compaction. Concurrent appends are locked, and duplicate seats share a
 single contribution budget.
 
-The headless training bridge has no soul-file roster or persistent scratchpad interface; it does not advertise
-these memory mechanics. Its replay policy tags retain the existing display-name hashes.
+The text training bridge requires the actual soul-file roster and supports the same private scratchpad
+read/write prompts with an explicit memory directory. Numeric choice mode is a separate restricted
+research action space. Preserve the selected memory mode and source-owned policy hashes across evaluation.

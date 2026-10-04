@@ -37,9 +37,7 @@ class FakeTransport(Transport):
         self.prompt_tokens = 0
         self.completion_tokens = 0
         self.base_url = "fake"
-        self.api_key = None
         self.timeout_seconds = 1.0
-        self.session = None
         self.slots_seen: set[int] = set()
         self.replies = replies
         self.council_prompts: list[str] = []
@@ -86,6 +84,7 @@ async def run_episode(tmp_path: Path, souls: list[Path], transport, **overrides)
     document = load_seats(seats_path.resolve().as_uri())
     episode = Episode.from_seats(config, 7, document, transport, artifacts, tmp_path / "memory")
     await episode.run()
+    episode.finalize()
     results = json.loads((tmp_path / "results.json").read_text())
     replay = json.loads((tmp_path / "replay").read_text())
     return results, replay, tmp_path
@@ -114,9 +113,14 @@ async def test_complete_private_teacher_trajectory_matches_applied_actions(tmp_p
     monkeypatch.setenv("COWORLD_SOURCE_REVISION", "a" * 40)
     souls = [SOULS / "steady.md", SOULS / "greedy.md", SOULS / "enforcer.md", SOULS / "steady.md"]
     results, replay, _ = await run_episode(tmp_path, souls, None)
-    records = [json.loads(line) for line in trajectory.read_text().splitlines()]
+    complete = json.loads(trajectory.read_text())
+    records = complete["decisions"] + [complete["episode"]]
     assert records[-1]["event_type"] == "episode" and records[-1]["status"] == "completed"
     assert records[-1]["outcome"]["scores"] == results["scores"]
+    effects = records[-1]["outcome"]["engine_effects"]
+    assert effects["turns"] == replay["turns"]
+    assert effects["councils"] == replay["communes"]
+    assert effects["lake"] == replay["lake"]
     decisions = records[:-1]
     assert len(decisions) == 24 + sum(len(r) for c in replay["communes"] for r in c["rounds"])
     for index, record in enumerate(decisions):
@@ -163,7 +167,7 @@ async def test_bad_replies_fall_back_and_are_marked_auto(tmp_path: Path):
     villager = VILLAGER
     souls = [villager, SOULS / "steady.md"]
     transport = FakeTransport(replies=["garbage"] * 200)
-    results, replay, out = await run_episode(tmp_path, souls, transport, commune_rounds=1, turns=2)
+    _results, replay, out = await run_episode(tmp_path, souls, transport, commune_rounds=1, turns=2)
     assert all(0 in turn["auto"] for turn in replay["turns"])
     assert all(s["auto"] for c in replay["communes"] for r in c["rounds"] for s in r if s["slot"] == 0)
     log = (out / "logs" / "policy_agent_0.log").read_text()
@@ -180,6 +184,7 @@ async def test_exhausted_wall_budget_goes_scripted(tmp_path: Path):
     episode = Episode.from_seats(config, 7, document, transport, artifacts, tmp_path / "memory")
     episode.started -= config.episode_wall_seconds + 1
     await episode.run()
+    episode.finalize()
     replay = json.loads((tmp_path / "replay").read_text())
     assert transport.calls == 0
     assert all(turn["auto"] == [0, 1] for turn in replay["turns"])
@@ -206,11 +211,11 @@ async def test_soul_seat_without_transport_crashes_loudly(tmp_path: Path):
     config = config_for(souls)
     seats_path, artifacts = stage_local_episode(config, souls, tmp_path)
     document = load_seats(seats_path.resolve().as_uri())
-    with pytest.raises(RuntimeError, match="OPENROUTER_API_KEY"):
+    with pytest.raises(RuntimeError, match="COWORLD_LLM_ENDPOINT"):
         Episode.from_seats(config, 7, document, None, artifacts)
 
 
-async def test_serve_episode_http_surface(tmp_path: Path, unused_tcp_port: int):
+async def test_serve_episode_http_surface(tmp_path: Path, unused_tcp_port: int, monkeypatch):
     import aiohttp
 
     souls = [SOULS / "steady.md", SOULS / "greedy.md"]
@@ -220,6 +225,14 @@ async def test_serve_episode_http_surface(tmp_path: Path, unused_tcp_port: int):
 
     import asyncio
 
+    admitted = asyncio.Event()
+    run = Episode.run
+
+    async def pause_until_observer_connected(self):
+        await admitted.wait()
+        await run(self)
+
+    monkeypatch.setattr(Episode, "run", pause_until_observer_connected)
     task = asyncio.create_task(serve_episode(config, 7, document, artifacts, "127.0.0.1", unused_tcp_port))
     base = f"http://127.0.0.1:{unused_tcp_port}"
     async with aiohttp.ClientSession() as session:
@@ -240,8 +253,8 @@ async def test_serve_episode_http_surface(tmp_path: Path, unused_tcp_port: int):
         async with session.ws_connect(f"{base}/global") as ws:
             first = json.loads((await ws.receive()).data)
             assert first["type"] == "snapshot" and first["replay"]["schema"] == "overfished-replay/1"
-            pong = await ws.ping(b"sentinel")
-            assert pong is None or True  # aiohttp answers pings at the protocol level
+            await ws.ping(b"sentinel")
+    admitted.set()
     assert await task == 0
     assert (tmp_path / "results.json").exists()
 
@@ -257,12 +270,30 @@ class SlowTransport(FakeTransport):
 
 async def test_decision_deadline_falls_back(tmp_path: Path):
     souls = [VILLAGER, SOULS / "steady.md"]
-    config = config_for(souls, turns=2, commune_rounds=0, llm={"decision_seconds": 0.1, "reasoning": {"effort": "low"}})
+    config = config_for(
+        souls, turns=2, commune_rounds=0, llm={"decision_seconds": 0.1, "reasoning": {"effort": "low"}}
+    )
     seats_path, artifacts = stage_local_episode(config, souls, tmp_path)
     document = load_seats(seats_path.resolve().as_uri())
     transport = SlowTransport()
     episode = Episode.from_seats(config, 7, document, transport, artifacts, tmp_path / "memory")
     await episode.run()
+    episode.finalize()
     replay = json.loads((tmp_path / "replay").read_text())
     assert all(0 in turn["auto"] for turn in replay["turns"])
     assert "exceeded" in (tmp_path / "logs" / "policy_agent_0.log").read_text()
+
+
+@pytest.mark.parametrize("corruption", ["size", "hash"])
+async def test_registered_soul_content_binding_precedes_episode_admission(tmp_path, corruption):
+    souls = [SOULS / "steady.md", SOULS / "greedy.md"]
+    config = config_for(souls)
+    path, artifacts = stage_local_episode(config, souls, tmp_path)
+    document = load_seats(path.as_uri())
+    if corruption == "size":
+        document.seats[0].size_bytes += 1
+    else:
+        document.seats[0].content_hash = "sha256:" + "a" * 64
+    with pytest.raises(ValueError, match="registered hash and size"):
+        Episode.from_seats(config, 7, document, None, artifacts)
+    assert not (tmp_path / "results.json").exists()
