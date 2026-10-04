@@ -26,7 +26,7 @@ from overfished.llm import (
     turn_observation,
 )
 from overfished.memory import SCRATCHPAD_NOTE_BYTES, ScratchpadStore, policy_id
-from overfished.scripted import SCRIPTED_NAMES, ScriptedPolicy, fallback_action, scripted_policy
+from overfished.scripted import SCRIPTED_NAMES, ScriptedPolicy, ScriptedView, fallback_action, scripted_policy
 from overfished.soul import parse_soul
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -268,12 +268,12 @@ class TrainingSession:
             scripted_policy(soul.scripted_name, soul.text) if soul.scripted else ScriptedPolicy("steady", 0.4)
         )
         if self.phase == "council":
-            speech = policy.say(self.engine, self.seat, self.round_index)
+            speech = policy.say(self.round_index)
             return {"response": compact({"say": speech}) if self.mode == "text" else speech}
         if self.mode == "choice":
             return {"response": compact({"choice": EFFORTS.index(0.4) * len(SOCIAL)})}
         return {
-            "response": policy.act(self.engine, self.seat).model_dump_json(),
+            "response": policy.act(ScriptedView.from_engine(self.engine, self.seat)).model_dump_json(),
             "policy": f"scripted/{policy.name}",
         }
 

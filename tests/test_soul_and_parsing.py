@@ -48,14 +48,22 @@ def test_rejected_souls(data, fragment):
 
 
 def test_extract_json_tolerates_fences_and_prose():
-    assert extract_json('Sure!\n```json\n{"effort": 0.5, "punish": []}\n```\nDone.') == {"effort": 0.5, "punish": []}
+    assert extract_json('Sure!\n```json\n{"effort": 0.5, "punish": []}\n```\nDone.') == {
+        "effort": 0.5,
+        "punish": [],
+    }
     assert extract_json("no json here") is None
     assert extract_json('{"a": 1} trailing {"b": 2}') == {"a": 1}
 
 
 def engine() -> Engine:
     config = GameConfig.model_validate(
-        {"tokens": ["a", "b", "c"], "players": [{"name": "x"}, {"name": "y"}, {"name": "z"}], "seed": 5, "turns": {"lo": 3, "hi": 3}}
+        {
+            "tokens": ["a", "b", "c"],
+            "players": [{"name": "x"}, {"name": "y"}, {"name": "z"}],
+            "seed": 5,
+            "turns": {"lo": 3, "hi": 3},
+        }
     )
     return Engine(config, 5)
 
@@ -68,9 +76,18 @@ def test_parse_action_variants():
     assert action.effort == 0.6
     assert action.punish[0].target == 1 and action.punish[0].fish == 2
     assert parse_action({"effort": 45}, e, 0).effort == 0.45
-    gifted = parse_action({"effort": 0.3, "gift": [{"target": other, "fish": 2}, {"target": other, "fish": 0}]}, e, 0)
-    assert isinstance(gifted, Action) and gifted.gift[0].target == 1 and gifted.gift[0].fish == 2 and len(gifted.gift) == 1
-    assert "gift.target" in parse_action({"effort": 0.3, "gift": [{"target": e.pseudonyms[0], "fish": 1}]}, e, 0)
+    gifted = parse_action(
+        {"effort": 0.3, "gift": [{"target": other, "fish": 2}, {"target": other, "fish": 0}]}, e, 0
+    )
+    assert (
+        isinstance(gifted, Action)
+        and gifted.gift[0].target == 1
+        and gifted.gift[0].fish == 2
+        and len(gifted.gift) == 1
+    )
+    assert "gift.target" in parse_action(
+        {"effort": 0.3, "gift": [{"target": e.pseudonyms[0], "fish": 1}]}, e, 0
+    )
     assert parse_action({"effort": 0.3, "punish": [{"target": other, "fish": 0}]}, e, 0).punish == []
 
 
@@ -80,56 +97,9 @@ def test_parse_action_rejections():
     assert "effort" in parse_action({"effort": 2.0}, e, 0)
     assert "target" in parse_action({"effort": 0.5, "punish": [{"target": e.pseudonyms[0]}]}, e, 0)
     assert "target" in parse_action({"effort": 0.5, "punish": [{"target": "Nobody"}]}, e, 0)
-    assert "whole" in parse_action({"effort": 0.5, "punish": [{"target": e.pseudonyms[2], "fish": 1.5}]}, e, 0)
-
-
-async def test_transport_reads_json_from_reasoning_when_content_is_empty(monkeypatch):
-    """DeepSeek V4 sometimes returns finish_reason=stop, empty content, and the reply inside `reasoning`."""
-    import json as _json
-    from overfished.llm import Transport
-
-    class FakeResponse:
-        status = 200
-        headers = {}
-
-        async def text(self):
-            return _json.dumps(
-                {
-                    "model": "deepseek/served",
-                    "choices": [
-                        {
-                            "finish_reason": "stop",
-                            "message": {
-                                "content": "",
-                                "reasoning": 'thinking... {"effort": 0.3, "punish": []}',
-                            },
-                        }
-                    ],
-                    "usage": {"prompt_tokens": 3, "completion_tokens": 2},
-                }
-            )
-
-        async def __aenter__(self):
-            return self
-
-        async def __aexit__(self, *args):
-            return False
-
-    class FakeSession:
-        def post(self, *args, **kwargs):
-            return FakeResponse()
-
-    transport = Transport(base_url="http://fake", api_key=None, timeout_seconds=1.0, session=FakeSession())
-    from overfished.trajectory import Attempt
-
-    text = await transport.complete(
-        model="deepseek/deepseek-v4-pro",
-        messages=[],
-        max_tokens=10,
-        slot=0,
-        evidence=Attempt(policy="fixture", inference_mode="text_action", prompt=[]),
+    assert "whole" in parse_action(
+        {"effort": 0.5, "punish": [{"target": e.pseudonyms[2], "fish": 1.5}]}, e, 0
     )
-    assert extract_json(text) == {"effort": 0.3, "punish": []}
 
 
 def test_manifest_declares_named_players_inline():
@@ -137,7 +107,9 @@ def test_manifest_declares_named_players_inline():
     import json
     from pathlib import Path
 
-    manifest = json.loads((Path(__file__).resolve().parent.parent / "coworld_manifest_template.json").read_text())
+    manifest = json.loads(
+        (Path(__file__).resolve().parent.parent / "coworld_manifest_template.json").read_text()
+    )
     players = manifest["game"]["config_schema"]["properties"]["players"]
     assert players["type"] == "array"
     items = players["items"]

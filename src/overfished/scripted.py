@@ -9,10 +9,31 @@ import re
 import statistics
 from dataclasses import dataclass
 
+from pydantic import BaseModel, ConfigDict
+
 from overfished.engine import Action, Engine, Punishment
 
 _EFFORT_LINE = re.compile(r"^\s*effort\s*:\s*([0-9]*\.?[0-9]+)\s*$", re.IGNORECASE | re.MULTILINE)
 DEFAULT_EFFORT = 0.4
+
+
+class ScriptedView(BaseModel):
+    """The public catches and own inventory available to the ordinary seated policy."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True, hide_input_in_errors=True)
+    slot: int
+    num_players: int
+    own_fish: int
+    last_catches: tuple[int, ...]
+
+    @classmethod
+    def from_engine(cls, engine: Engine, slot: int) -> ScriptedView:
+        return cls(
+            slot=slot,
+            num_players=engine.config.num_players,
+            own_fish=engine.fish[slot],
+            last_catches=tuple(engine.turns[-1].catch) if engine.turns else (),
+        )
 
 
 def soul_effort(text: str) -> float:
@@ -27,19 +48,21 @@ class ScriptedPolicy:
     name: str
     effort: float
 
-    def act(self, engine: Engine, slot: int) -> Action:
-        if self.name == "enforcer" and engine.turns:
-            last = engine.turns[-1].catch
+    def act(self, view: ScriptedView) -> Action:
+        if self.name == "enforcer" and view.last_catches:
+            last = view.last_catches
             median = statistics.median(last)
             targets = [
-                s for s in range(engine.config.num_players) if s != slot and last[s] > 1.5 * median and last[s] >= 2
+                s
+                for s in range(view.num_players)
+                if s != view.slot and last[s] > 1.5 * median and last[s] >= 2
             ]
             targets.sort(key=lambda s: -last[s])
-            punish = [Punishment(target=s, fish=1) for s in targets[:2] if engine.fish[slot] > 0]
+            punish = [Punishment(target=s, fish=1) for s in targets[:2] if view.own_fish > 0]
             return Action(effort=self.effort, punish=punish)
         return Action(effort=self.effort)
 
-    def say(self, engine: Engine, slot: int, round_index: int) -> str:
+    def say(self, round_index: int) -> str:
         if round_index > 0:
             return ""
         if self.name == "greedy":

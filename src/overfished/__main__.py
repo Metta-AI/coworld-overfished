@@ -8,7 +8,6 @@
 from __future__ import annotations
 
 import argparse
-import asyncio
 import hashlib
 import json
 import os
@@ -17,6 +16,7 @@ import sys
 from pathlib import Path
 
 from overfished.config import GameConfig, PlayerName
+from overfished.lifecycle import main_owned
 from overfished.seats import SEATS_SCHEMA
 from overfished.server import ArtifactPaths, choose_seed, load_seats, main_coworld, serve_episode
 
@@ -43,7 +43,14 @@ def stage_local_episode(config: GameConfig, souls: list[Path], out: Path) -> tup
         )
     seats_path = out / "player_seats.json"
     seats_path.write_text(
-        json.dumps({"schema": SEATS_SCHEMA, "seats": seats, "player_status_uri": (out / "player_status.json").resolve().as_uri()}, indent=2)
+        json.dumps(
+            {
+                "schema": SEATS_SCHEMA,
+                "seats": seats,
+                "player_status_uri": (out / "player_status.json").resolve().as_uri(),
+            },
+            indent=2,
+        )
     )
     (out / "config.json").write_text(config.model_dump_json(indent=2))
     artifacts = ArtifactPaths(
@@ -68,7 +75,9 @@ def run_local(args: argparse.Namespace) -> int:
     out = Path(args.out)
     seats_path, artifacts = stage_local_episode(config, souls, out)
     document = load_seats(seats_path.resolve().as_uri())
-    return asyncio.run(serve_episode(config, choose_seed(config), document, artifacts, args.host, args.port))
+    return (
+        main_owned(serve_episode(config, choose_seed(config), document, artifacts, args.host, args.port)) or 0
+    )
 
 
 def main() -> int:
@@ -76,7 +85,11 @@ def main() -> int:
     sub = parser.add_subparsers(dest="command")
     run = sub.add_parser("run", help="run one local episode from soul files")
     run.add_argument("--soul", action="append", required=True, help="soul file; repeat once per seat")
-    run.add_argument("--scratchpad-dir", default="runs/scratchpads", help="persistent private memory directory; reuse across episodes")
+    run.add_argument(
+        "--scratchpad-dir",
+        default="runs/scratchpads",
+        help="persistent private memory directory; reuse across episodes",
+    )
     run.add_argument("--config", help="token-free game config JSON (a manifest variant's game_config)")
     run.add_argument("--out", required=True, help="artifact directory")
     run.add_argument("--turns", type=int, help="fix the episode length instead of sampling it")

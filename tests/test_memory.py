@@ -28,7 +28,6 @@ class MemoryTransport(Transport):
     def __init__(self, update):
         self.calls = self.prompt_tokens = self.completion_tokens = 0
         self.base_url = "fake"
-        self.api_key = None
         self.update = update
         self.observations = []
 
@@ -50,6 +49,7 @@ async def make_episode(out, memory, souls, transport, seed):
     path, artifacts = stage_local_episode(config, souls, out)
     episode = Episode.from_seats(config, seed, load_seats(path.as_uri()), transport, artifacts, memory)
     await episode.run()
+    episode.finalize()
     return episode
 
 
@@ -137,9 +137,7 @@ async def test_cli_memory_survives_process_restart(tmp_path, unused_tcp_port, mo
     config_path = tmp_path / "config.json"
     config_path.write_text(json.dumps({"commune_rounds": 1, "llm": {"think_turns": 0}}))
     memory = tmp_path / "memory"
-    monkeypatch.delenv("COWORLD_LLM_ENDPOINT", raising=False)
-    monkeypatch.setenv("OPENROUTER_API_KEY", "test-only")
-    monkeypatch.setenv("OPENROUTER_BASE_URL", f"http://127.0.0.1:{unused_tcp_port}")
+    monkeypatch.setenv("COWORLD_LLM_ENDPOINT", f"http://127.0.0.1:{unused_tcp_port}")
     try:
         for index in range(2):
             out = tmp_path / f"episode-{index}"
@@ -148,8 +146,6 @@ async def test_cli_memory_survives_process_restart(tmp_path, unused_tcp_port, mo
                 souls.reverse()
             environment = os.environ.copy()
             if index:
-                environment.pop("OPENROUTER_API_KEY", None)
-                environment.pop("OPENROUTER_BASE_URL", None)
                 config = config_for(souls, turns=1, commune_rounds=1, llm={"think_turns": 0})
                 seats_path, artifacts = stage_local_episode(config, souls, out)
                 (out / "memory-input.json").write_text(
@@ -178,8 +174,6 @@ async def test_cli_memory_survives_process_restart(tmp_path, unused_tcp_port, mo
                     COGAME_MEMORY_OUTPUT_URI=(out / "memory-output.json").as_uri(),
                     COWORLD_LLM_ENABLED="true",
                     COWORLD_LLM_ENDPOINT=f"http://127.0.0.1:{unused_tcp_port}",
-                    OPENAI_BASE_URL=f"http://127.0.0.1:{unused_tcp_port}/v1",
-                    OPENAI_API_KEY="sidecar",
                 )
                 arguments = []
             else:
@@ -280,6 +274,7 @@ async def test_failed_boundary_calls_preserve_memory(tmp_path, error):
         config, 7, load_seats(path.as_uri()), FailingTransport({}), artifacts, store.root
     )
     await episode.run()
+    episode.finalize()
     assert store.read(key).notes == ["original"]
     assert episode.done.is_set()
 
@@ -290,19 +285,29 @@ async def test_hosted_episode_without_opt_in_has_no_memory_prompts_or_calls(tmp_
     monkeypatch.delenv("COGAME_MEMORY_INPUT_URI", raising=False)
     monkeypatch.delenv("COGAME_MEMORY_OUTPUT_URI", raising=False)
     transport = MemoryTransport({"scratchpad_append": "must not be written"})
-    episode = await make_episode(tmp_path / "episode", tmp_path / "ignored-explicit-memory", [VILLAGER, SOULS / "steady.md"], transport, 7)
+    episode = await make_episode(
+        tmp_path / "episode",
+        tmp_path / "ignored-explicit-memory",
+        [VILLAGER, SOULS / "steady.md"],
+        transport,
+        7,
+    )
     assert episode.scratchpads is None
     assert not any("SCRATCHPAD" in observation for observation in transport.observations)
-    assert not any("SCRATCHPAD" in seat.brain.system_prompt for seat in episode.seats if seat.brain is not None)
+    assert not any(
+        "SCRATCHPAD" in seat.brain.system_prompt for seat in episode.seats if seat.brain is not None
+    )
     assert not (tmp_path / "ignored-local-memory").exists()
     assert not (tmp_path / "ignored-explicit-memory").exists()
 
 
 def test_hosted_snapshot_byte_limit():
     key = policy_id(b"a soul")
-    data = {"protocol": "append-v1", "namespace": "league", "policies": {
-        key: {"summary": "x" * (SCRATCHPAD_MAX_BYTES - 16384), "notes": ["é" * 8192]}
-    }}
+    data = {
+        "protocol": "append-v1",
+        "namespace": "league",
+        "policies": {key: {"summary": "x" * (SCRATCHPAD_MAX_BYTES - 16384), "notes": ["é" * 8192]}},
+    }
     assert MemoryInput.model_validate(data).policies[key].notes == ["é" * 8192]
     data["policies"][key]["summary"] += "x"
     with pytest.raises(ValueError, match="512 KiB"):
@@ -317,9 +322,17 @@ async def test_memory_view_renders_unescaped_summary_and_separate_notes(tmp_path
     memory = tmp_path / "memory"
     if hosted:
         source = tmp_path / "input.json"
-        source.write_text(json.dumps({"protocol": "append-v1", "namespace": "test", "policies": {
-            key: {"summary": summary, "notes": notes},
-        }}))
+        source.write_text(
+            json.dumps(
+                {
+                    "protocol": "append-v1",
+                    "namespace": "test",
+                    "policies": {
+                        key: {"summary": summary, "notes": notes},
+                    },
+                }
+            )
+        )
         monkeypatch.setenv("COGAME_MEMORY_INPUT_URI", source.as_uri())
         monkeypatch.setenv("COGAME_MEMORY_OUTPUT_URI", (tmp_path / "output.json").as_uri())
     else:
@@ -338,9 +351,17 @@ async def test_memory_view_renders_unescaped_summary_and_separate_notes(tmp_path
 async def test_identical_souls_share_contribution_budget_with_separator(tmp_path, monkeypatch, oversized):
     key = policy_id(VILLAGER.read_bytes())
     source = tmp_path / "input.json"
-    source.write_text(json.dumps({"protocol": "append-v1", "namespace": "test", "policies": {
-        key: {"summary": "", "notes": []},
-    }}))
+    source.write_text(
+        json.dumps(
+            {
+                "protocol": "append-v1",
+                "namespace": "test",
+                "policies": {
+                    key: {"summary": "", "notes": []},
+                },
+            }
+        )
+    )
     output = tmp_path / "output.json"
     monkeypatch.setenv("COGAME_MEMORY_INPUT_URI", source.as_uri())
     monkeypatch.setenv("COGAME_MEMORY_OUTPUT_URI", output.as_uri())
@@ -353,15 +374,25 @@ async def test_identical_souls_share_contribution_budget_with_separator(tmp_path
     assert json.loads(output.read_text())["notes"] == ({} if oversized else {key: note + "\n" + note})
 
 
-async def test_memory_flush_failure_preserves_episode_results(tmp_path, monkeypatch):
+async def test_memory_flush_failure_withholds_episode_completion(tmp_path, monkeypatch):
     key = policy_id(VILLAGER.read_bytes())
     source = tmp_path / "input.json"
-    source.write_text(json.dumps({"protocol": "append-v1", "namespace": "test", "policies": {
-        key: {"summary": "", "notes": []},
-    }}))
+    source.write_text(
+        json.dumps(
+            {
+                "protocol": "append-v1",
+                "namespace": "test",
+                "policies": {
+                    key: {"summary": "", "notes": []},
+                },
+            }
+        )
+    )
     monkeypatch.setenv("COGAME_MEMORY_INPUT_URI", source.as_uri())
     monkeypatch.setenv("COGAME_MEMORY_OUTPUT_URI", (tmp_path / "missing" / "output.json").as_uri())
     with pytest.raises(FileNotFoundError):
-        await make_episode(tmp_path / "episode", None, [VILLAGER, SOULS / "steady.md"], MemoryTransport({}), 7)
-    assert len(json.loads((tmp_path / "episode" / "results.json").read_text())["scores"]) == 2
-    assert (tmp_path / "episode" / "replay").exists()
+        await make_episode(
+            tmp_path / "episode", None, [VILLAGER, SOULS / "steady.md"], MemoryTransport({}), 7
+        )
+    assert not (tmp_path / "episode" / "results.json").exists()
+    assert not (tmp_path / "episode" / "replay").exists()

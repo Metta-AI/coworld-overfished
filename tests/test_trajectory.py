@@ -2,7 +2,6 @@ import json
 import subprocess
 from uuid import uuid4
 
-import aiohttp
 import pytest
 from aiohttp import web
 from test_episode import SOULS, VILLAGER, run_episode
@@ -13,13 +12,14 @@ from overfished.trajectory import Attempt, Trajectory
 SOURCE_REVISION = subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
 
 
-def test_recorder_rejects_applied_action_mismatch():
+def test_recorder_rejects_applied_action_mismatch(tmp_path):
     recorder = Trajectory(
         episode_id="episode",
         game_version="test",
         source_revision="a" * 40,
         seed_family="seed",
         image_digest=None,
+        destination=tmp_path / "trajectory.jsonl",
     )
     proposal = Attempt(
         policy="teacher",
@@ -43,13 +43,16 @@ def test_recorder_rejects_applied_action_mismatch():
         )
 
 
-async def test_native_attempts_join_private_memory_speech_and_actions(tmp_path, monkeypatch, unused_tcp_port):
+@pytest.mark.parametrize("sampled", [False, True])
+async def test_native_attempts_join_private_memory_speech_and_actions(
+    tmp_path, monkeypatch, unused_tcp_port, sampled
+):
     archives = {}
 
     async def complete(request):
         body = await request.json()
         slot = request.headers["X-Coworld-Player-Slot"]
-        assert body["temperature"] == 0 and body["stream"] is False
+        assert body["temperature"] == (1 if sampled else 0) and body["stream"] is False
         observation = body["messages"][-1]["content"]
         if observation.startswith("SCRATCHPAD READ"):
             answer = {"notebook": "PRIVATE MEMORY SENTINEL"}
@@ -65,13 +68,25 @@ async def test_native_attempts_join_private_memory_speech_and_actions(tmp_path, 
         payload = {
             "model": "fixture/actually-served",
             "choices": [{"finish_reason": "stop", "message": {"content": json.dumps(answer)}}],
-            "usage": {"prompt_tokens": 7, "completion_tokens": 3},
+            "usage": {"prompt_tokens": 32768 if sampled else 7, "completion_tokens": 2 if sampled else 3},
             "sampling_evidence": {
-                "prompt_token_ids": [1],
-                "completion_token_ids": [2],
-                "behavior_log_probs": None,
+                "policy_revision": "synthetic-model",
+                "tokenizer_revision": "synthetic-tokenizer",
+                "chat_template": "synthetic-template",
+                "sampling": "full_softmax_temperature_one",
+                "enable_thinking": False,
+                "max_new_tokens": body["max_tokens"],
+                "max_sequence_length": 32768 + body["max_tokens"],
+                "sampling_seed": 0,
+                "eos_token_ids": [4],
+                "prompt_token_ids": list(range(32768)),
+                "completion_token_ids": [3, 4],
+                "behavior_log_probs": [-0.5, -0.6],
+                "response": json.dumps(answer),
                 "stop_reason": "eos",
-            },
+            }
+            if sampled
+            else None,
         }
         archives[call_id] = (slot, body, payload)
         return web.json_response(
@@ -95,21 +110,16 @@ async def test_native_attempts_join_private_memory_speech_and_actions(tmp_path, 
     monkeypatch.setenv("COWORLD_GAME_VERSION", "fixture")
     monkeypatch.setenv("COWORLD_SOURCE_REVISION", SOURCE_REVISION)
     monkeypatch.delenv("COWORLD_GAME_IMAGE_DIGEST", raising=False)
-    monkeypatch.setenv("COWORLD_LLM_TEMPERATURE", "0")
+    monkeypatch.setenv("COWORLD_LLM_TEMPERATURE", "1" if sampled else "0")
     try:
-        async with aiohttp.ClientSession() as session:
-            transport = Transport(
-                base_url=f"http://127.0.0.1:{unused_tcp_port}",
-                api_key=None,
-                timeout_seconds=2,
-                session=session,
-            )
-            results, replay, _ = await run_episode(
-                tmp_path, [VILLAGER, SOULS / "steady.md"], transport, turns=2, commune_every=3
-            )
+        transport = Transport(base_url=f"http://127.0.0.1:{unused_tcp_port}", timeout_seconds=2)
+        results, replay, _ = await run_episode(
+            tmp_path, [VILLAGER, SOULS / "steady.md"], transport, turns=2, commune_every=3
+        )
     finally:
         await runner.cleanup()
-    records = [json.loads(line) for line in trajectory.read_text().splitlines()]
+    complete = json.loads(trajectory.read_text())
+    records = complete["decisions"] + [complete["episode"]]
     assert records[-1]["outcome"]["scores"] == results["scores"]
     attempts = [a for r in records[:-1] for a in r["attempts"] if a["origin"] == "model"]
     archive_path = tmp_path / "native-call-archives.json"
@@ -120,11 +130,15 @@ async def test_native_attempts_join_private_memory_speech_and_actions(tmp_path, 
     assert {a["inference_mode"] for a in attempts} == {"memory", "speech", "text_action"}
     for attempt in attempts:
         slot, request, response = archives[attempt["platform_call_id"]]
-        assert attempt["request"] == request and attempt["raw_response"] == response
+        assert attempt["request"] == request and json.loads(attempt["raw_response"]) == response
         assert attempt["prompt"] == request["messages"] and slot == "0"
         assert attempt["model"] == "fixture/actually-served"
         assert attempt["model_identity"] == "a" * 64
-        assert attempt["sampled_token_ids"] == [2] and attempt["behavior_logprobs"] is None
+        if sampled:
+            assert attempt["prompt_token_ids"] == list(range(32768))
+            assert attempt["sampled_token_ids"] == [3, 4] and attempt["behavior_logprobs"] == [-0.5, -0.6]
+        else:
+            assert attempt["sampled_token_ids"] is None and attempt["behavior_logprobs"] is None
     assert sum(not a["accepted"] for a in attempts) == 2
     for record in records[:-1]:
         selected = next(a for a in record["attempts"] if a["attempt_id"] == record["selected_attempt_id"])
@@ -158,19 +172,19 @@ async def test_failed_native_responses_survive_complete_fallback_episode(
     monkeypatch.setenv("COWORLD_GAME_VERSION", "fixture")
     monkeypatch.setenv("COWORLD_SOURCE_REVISION", SOURCE_REVISION)
     try:
-        async with aiohttp.ClientSession() as session:
-            transport = Transport(f"http://127.0.0.1:{unused_tcp_port}", None, 2, session)
-            _, replay, _ = await run_episode(
-                tmp_path,
-                [VILLAGER, SOULS / "steady.md"],
-                transport,
-                turns=2,
-                commune_rounds=0,
-                commune_at_start=False,
-            )
+        transport = Transport(f"http://127.0.0.1:{unused_tcp_port}", 2)
+        _, replay, _ = await run_episode(
+            tmp_path,
+            [VILLAGER, SOULS / "steady.md"],
+            transport,
+            turns=2,
+            commune_rounds=0,
+            commune_at_start=False,
+        )
     finally:
         await runner.cleanup()
-    records = [json.loads(line) for line in trajectory.read_text().splitlines()]
+    complete = json.loads(trajectory.read_text())
+    records = complete["decisions"] + [complete["episode"]]
     assert records[-1]["status"] == "completed"
     model_rows = [row for row in records[:-1] if row["seat"] == "0"]
     assert model_rows and all(row["action_status"] == "fallback" for row in model_rows)
@@ -182,6 +196,6 @@ async def test_failed_native_responses_survive_complete_fallback_episode(
     for attempt in attempts:
         request, raw = archives[attempt["platform_call_id"]]
         assert attempt["request"] == request
-        assert attempt["raw_response"] == (json.loads(raw) if mode == "invalid-schema" else raw)
+        assert attempt["raw_response"] == raw
         assert not attempt["accepted"] and attempt["rejection_reason"]
     assert "PRIVATE" not in json.dumps(replay)
