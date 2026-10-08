@@ -40,6 +40,8 @@ class MemoryTransport(Transport):
             return json.dumps({"notebook": "remembered privately"})
         if observation.startswith("SCRATCHPAD WRITE"):
             return json.dumps(self.update)
+        if observation.startswith("COUNCIL BALLOT"):
+            return json.dumps({"vote": None})
         if observation.startswith("COUNCIL"):
             return json.dumps({"say": "hello"})
         return json.dumps({"effort": 0.4})

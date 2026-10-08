@@ -9,12 +9,14 @@ import sys
 from pathlib import Path
 
 from overfished.config import GameConfig
-from overfished.engine import Action, Engine, Gift, Punishment, Speech
+from overfished.engine import Action, CouncilVote, Engine, Gift, Punishment, Speech
 from overfished.llm import (
     council_observation,
     extract_json,
     mechanics_block,
     parse_action,
+    parse_vote,
+    vote_observation,
     turn_observation,
 )
 from overfished.scripted import ScriptedPolicy
@@ -59,6 +61,7 @@ class TrainingSession:
         self.decision_id = 0
         self.seat = 0
         self.actions: list[Action] = []
+        self.votes: list[CouncilVote] = []
         self.earlier: list[list[Speech]] = []
         self.so_far: list[Speech] = []
         self.round_index = 0
@@ -75,6 +78,10 @@ class TrainingSession:
             "pseudonym": engine.pseudonyms[self.seat],
             "turn": engine.turn,
             "fish": list(engine.fish),
+            "scores": engine.scores,
+            "expelled": engine.expelled,
+            "vote_kind": engine.vote_kind,
+            "phase": self.phase,
             "last_catch": list(last.catch) if last else [0] * self.config.num_players,
             "own_last_effort": engine.last_effort[self.seat],
             "boat_capacity": engine.lake.boat_capacity,
@@ -93,6 +100,8 @@ class TrainingSession:
             user = council_observation(
                 self.engine, self.seat, "", self.round_index, self.order, self.earlier, self.so_far
             )
+        elif self.phase == "voting":
+            user = vote_observation(self.engine, self.seat, "", self.earlier)
         else:
             user = turn_observation(self.engine, self.seat, "")
         return [{"role": "system", "content": system}, {"role": "user", "content": user}]
@@ -121,6 +130,20 @@ class TrainingSession:
         }
         if self.phase == "council":
             return {"kind": "speech_turn", **common}
+        if self.phase == "voting":
+            candidates = self.vote_choices()
+            schema = {
+                "type": "object",
+                "properties": ({"choice": {"type": "integer", "enum": list(candidates)}} if self.mode == "choice"
+                               else {"vote": {"enum": list(candidates.values())}}),
+                "required": ["choice" if self.mode == "choice" else "vote"],
+            }
+            question = {
+                "state": common["semantic_view"], "instructions": messages[1]["content"],
+                "candidates": {str(choice): {"decision": {"choice": choice}, "criterion": {"vote": target}}
+                               for choice, target in candidates.items()},
+            } if self.mode == "choice" else None
+            return {"kind": "decision", **common, "action_schema": schema, "typed_question": question}
         if self.mode == "choice":
             question = {
                 "state": common["semantic_view"],
@@ -151,9 +174,13 @@ class TrainingSession:
             }
         return {"kind": "decision", **common, "action_schema": schema, "typed_question": question}
 
+    def vote_choices(self) -> dict[int, str | None]:
+        return {0: None, **{slot + 1: name for slot, name in enumerate(self.engine.pseudonyms)
+                           if slot != self.seat and (self.engine.vote_kind == "expel" or slot == self.engine.expelled)}}
+
     def encode(self) -> dict[str, object]:
-        if self.mode != "choice" or self.phase != "fishing":
-            raise ValueError("Numeric encoding requires a fishing choice")
+        if self.mode != "choice" or self.phase not in {"fishing", "voting"}:
+            raise ValueError("Numeric encoding requires a fishing or ballot choice")
         last = self.engine.turns[-1] if self.engine.turns else None
         fish = list(self.engine.fish) + [0] * (MAX_SEATS - self.config.num_players)
         catches = list(last.catch) + [0] * (MAX_SEATS - self.config.num_players) if last else [0] * MAX_SEATS
@@ -163,16 +190,20 @@ class TrainingSession:
             self.engine.fish[self.seat] / (100 + self.engine.fish[self.seat]),
             self.engine.lake.boat_capacity / 100,
             self.engine.last_effort[self.seat],
+            float(self.phase == "voting"),
+            (self.engine.expelled + 1) / MAX_SEATS if self.engine.expelled is not None else 0.0,
             *(value / (100 + value) for value in fish),
             *(value / (50 + value) for value in catches),
         ]
         return {
             "decision_id": self.decision_id,
             "values": values,
-            "actions": [{"choice": choice} for choice in range(len(CHOICES))],
+            "actions": [{"choice": choice} for choice in (self.vote_choices() if self.phase == "voting" else range(len(CHOICES)))],
         }
 
     def teacher(self) -> dict[str, str]:
+        if self.phase == "voting":
+            return {"response": compact({"choice": 0} if self.mode == "choice" else {"vote": None})}
         if self.phase == "council":
             speech = ScriptedPolicy("steady", 0.4).say(self.engine, self.seat, self.round_index)
             return {"response": speech}
@@ -193,8 +224,12 @@ class TrainingSession:
             self.speaker_index = 0
             self.round_index += 1
             if self.round_index == self.config.commune_rounds:
-                self.engine.record_commune(self.earlier, self.order)
-                self.phase = "fishing"
+                if self.engine.vote_kind is not None:
+                    self.phase = "voting"
+                    self.votes = []
+                else:
+                    self.engine.record_commune(self.earlier, self.order)
+                    self.phase = "fishing"
                 self.seat = 0
             else:
                 self.seat = self.order[0]
@@ -203,11 +238,28 @@ class TrainingSession:
         return {"kind": "spoken", "text": text, "to": "public", "observation": self.observation()}
 
     def step(self, request: dict[str, object]) -> dict[str, object]:
-        if self.phase != "fishing" or request["decision_id"] != self.decision_id:
+        if self.phase not in {"fishing", "voting"} or request["decision_id"] != self.decision_id:
             return {"kind": "rejected", "reason": "stale fishing decision"}
         reply = extract_json(str(request["response"]))
         if reply is None:
             return {"kind": "rejected", "reason": "response needs one JSON object"}
+        if self.phase == "voting":
+            if self.mode == "choice":
+                choice = reply.get("choice")
+                if type(choice) is not int or choice not in self.vote_choices():
+                    return {"kind": "rejected", "reason": "illegal ballot choice"}
+                reply = {"vote": self.vote_choices()[choice]}
+            ballot = parse_vote(reply, self.engine, self.seat)
+            if isinstance(ballot, str):
+                return {"kind": "rejected", "reason": ballot}
+            self.votes.append(ballot)
+            self.decision_id += 1
+            self.seat += 1
+            if self.seat == self.config.num_players:
+                self.engine.record_commune(self.earlier, self.order, self.votes)
+                self.phase = "fishing"
+                self.seat = 0
+            return {"kind": "accepted", "action": reply, "observation": self.observation()}
         if self.mode == "choice":
             if "choice" not in reply:
                 return {"kind": "rejected", "reason": "response needs a choice"}

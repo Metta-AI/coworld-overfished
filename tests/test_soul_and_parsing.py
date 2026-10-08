@@ -120,3 +120,20 @@ def test_manifest_declares_named_players_inline():
     items = players["items"]
     assert items["type"] == "object" and items["properties"]["name"]["type"] == "string"
     assert "$ref" not in json.dumps(items)
+
+
+def test_vote_parser_rejects_self_unknown_and_wrong_reinstatement():
+    from overfished.engine import CouncilVote, Engine
+    from overfished.llm import parse_vote
+    from test_engine import config
+
+    engine = Engine(config(), 7)
+    assert parse_vote({"vote": None}, engine, 0) == CouncilVote()
+    assert parse_vote({"vote": engine.pseudonyms[1]}, engine, 0) == CouncilVote(target=1)
+    for value in [engine.pseudonyms[0], "unknown", 1, True, [], {}]:
+        assert isinstance(parse_vote({"vote": value}, engine, 0), str)
+    assert isinstance(parse_vote({}, engine, 0), str)
+    engine.expelled = 1
+    engine.expulsion_used = True
+    assert isinstance(parse_vote({"vote": engine.pseudonyms[2]}, engine, 0), str)
+    assert parse_vote({"vote": engine.pseudonyms[1]}, engine, 0) == CouncilVote(target=1)

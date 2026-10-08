@@ -60,6 +60,8 @@ class FakeTransport(Transport):
         last = messages[-1]["content"]
         if last.startswith("Continue privately"):
             return json.dumps({"thinking": "ok, deciding", "notebook": "keep at 50%", "effort": 0.5, "punish": []})
+        if last.startswith("COUNCIL BALLOT"):
+            return '{"vote": null}'
         if "COUNCIL" in last[:60]:
             self.council_prompts.append(last)
             return json.dumps({"thinking": "say something", "say": f"Seat {slot} says: let us all fish at half."})
@@ -227,3 +229,47 @@ async def test_decision_deadline_falls_back(tmp_path: Path):
     replay = json.loads((tmp_path / "replay").read_text())
     assert all(0 in turn["auto"] for turn in replay["turns"])
     assert "exceeded" in (tmp_path / "logs" / "policy_agent_0.log").read_text()
+
+
+@pytest.mark.parametrize("reinstate", [True, False])
+async def test_expulsion_keeps_chat_and_scratchpad_then_restores_fishing(tmp_path: Path, reinstate):
+    class VotingTransport(FakeTransport):
+        target = ""
+        fishing_prompts = []
+        scratchpad_prompts = []
+
+        async def complete(self, **kwargs):
+            prompt = kwargs["messages"][-1]["content"]
+            slot = kwargs["slot"]
+            if prompt.startswith("COUNCIL BALLOT"):
+                self.calls += 1
+                # Expel at the second council; reinstate at the third.
+                target = self.target if slot != 0 and ("before turn 2." in prompt or (reinstate and "before turn 3." in prompt)) else None
+                return json.dumps({"vote": target, "notebook": "remember the ballot"})
+            if prompt.startswith("FISHING TURN"):
+                self.fishing_prompts.append((slot, prompt.split(".")[0]))
+            if prompt.startswith("SCRATCHPAD WRITE"):
+                self.scratchpad_prompts.append(slot)
+            return await super().complete(**kwargs)
+
+    souls = [VILLAGER] * 8
+    config = config_for(souls, turns=4, commune_every=1, commune_rounds=1)
+    seats_path, artifacts = stage_local_episode(config, souls, tmp_path)
+    transport = VotingTransport()
+    episode = Episode.from_seats(config, 7, load_seats(seats_path.resolve().as_uri()), transport, artifacts, tmp_path / "memory")
+    transport.target = episode.engine.pseudonyms[0]
+    await episode.run()
+    replay = episode.engine.replay()
+    assert [c["vote_kind"] for c in replay["communes"]] == ["expel", "expel", "reinstate", None if reinstate else "reinstate"]
+    assert [c["passed_target"] for c in replay["communes"]] == [None, 0, 0 if reinstate else None, None]
+    assert replay["turns"][0]["catch"][0] > 0
+    assert replay["turns"][1]["catch"][0] == 0
+    assert replay["turns"][1]["fish"][0] == replay["turns"][0]["fish"][0]
+    assert (replay["turns"][2]["catch"][0] > 0) == reinstate
+    results = json.loads((tmp_path / "results.json").read_text())
+    assert (results["scores"][0] > 0) == reinstate
+    assert results["scores"] == replay["scores"]
+    assert (0, "FISHING TURN 2") not in transport.fishing_prompts
+    assert len([s for c in replay["communes"] for r in c["rounds"] for s in r if s["slot"] == 0 and s["text"]]) == 4
+    assert 0 in transport.scratchpad_prompts
+    assert all(seat.brain.notebook for seat in episode.seats)
