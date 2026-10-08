@@ -16,6 +16,7 @@
     "player_runtime": "game-hosted",
     "config_schema": {
       "$defs": {
+        "JsonValue": {},
         "LakeConfig": {
           "additionalProperties": false,
           "properties": {
@@ -121,7 +122,9 @@
               "type": "integer"
             },
             "reasoning": {
-              "additionalProperties": true,
+              "additionalProperties": {
+                "$ref": "#/$defs/JsonValue"
+              },
               "description": "OpenRouter `reasoning` parameter sent with every call. Bounds a reasoning model's hidden thinking so it cannot spend the whole output budget before writing its JSON; the seat's visible `thinking` field is where deliberation is meant to go. An empty object sends nothing.",
               "title": "Reasoning",
               "type": "object"

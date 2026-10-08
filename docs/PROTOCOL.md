@@ -179,9 +179,6 @@ Local runs use an append-only history under `--scratchpad-dir` (default `runs/sc
 note and byte bounds but no automatic compaction. Concurrent appends are locked, and duplicate seats share a
 single contribution budget.
 
-The headless training bridge has no soul-file roster or persistent scratchpad interface; it does not advertise
-these memory mechanics. Its replay policy tags retain the existing display-name hashes.
-
 ## Public council ballots
 
 After all speaking rounds, each seat receives a separate `COUNCIL BALLOT` decision with the complete discussion.
@@ -202,3 +199,8 @@ The training bridge exposes ballots as `decision` requests. Text mode uses the s
 uses `0` to abstain and `slot + 1` to target another eligible seat; `typed_question` and `encode.actions` list
 legal choices. The numeric observation has 39 values, including a ballot-phase flag and the expelled seat
 (encoded as `(slot + 1) / 16`, or zero for none). Ballots stay unpublished until all seats have voted.
+
+
+The text training bridge requires the actual soul-file roster and supports the same private scratchpad
+read/write prompts with an explicit memory directory. Numeric choice mode is a separate restricted
+research action space. Preserve the selected memory mode and source-owned policy hashes across evaluation.

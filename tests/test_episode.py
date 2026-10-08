@@ -37,9 +37,7 @@ class FakeTransport(Transport):
         self.prompt_tokens = 0
         self.completion_tokens = 0
         self.base_url = "fake"
-        self.api_key = None
         self.timeout_seconds = 1.0
-        self.session = None
         self.slots_seen: set[int] = set()
         self.replies = replies
         self.council_prompts: list[str] = []
@@ -48,7 +46,16 @@ class FakeTransport(Transport):
     def describe(self) -> str:
         return "fake"
 
-    async def complete(self, *, model: str, messages: list[dict], max_tokens: int, slot: int, reasoning: dict | None = None) -> str:
+    async def complete(
+        self,
+        *,
+        model: str,
+        messages: list[dict],
+        max_tokens: int,
+        slot: int,
+        evidence,
+        reasoning: dict | None = None,
+    ) -> str:
         self.calls += 1
         self.slots_seen.add(slot)
         assert model.startswith("anthropic/") or "/" in model
@@ -59,12 +66,16 @@ class FakeTransport(Transport):
             return self.replies.pop(0)
         last = messages[-1]["content"]
         if last.startswith("Continue privately"):
-            return json.dumps({"thinking": "ok, deciding", "notebook": "keep at 50%", "effort": 0.5, "punish": []})
+            return json.dumps(
+                {"thinking": "ok, deciding", "notebook": "keep at 50%", "effort": 0.5, "punish": []}
+            )
         if last.startswith("COUNCIL BALLOT"):
             return '{"vote": null}'
         if "COUNCIL" in last[:60]:
             self.council_prompts.append(last)
-            return json.dumps({"thinking": "say something", "say": f"Seat {slot} says: let us all fish at half."})
+            return json.dumps(
+                {"thinking": "say something", "say": f"Seat {slot} says: let us all fish at half."}
+            )
         assert "GIFTS recently" in last and "luck" in messages[0]["content"]
         return json.dumps({"thinking": "let me think more", "continue": True})
 
@@ -75,6 +86,7 @@ async def run_episode(tmp_path: Path, souls: list[Path], transport, **overrides)
     document = load_seats(seats_path.resolve().as_uri())
     episode = Episode.from_seats(config, 7, document, transport, artifacts, tmp_path / "memory")
     await episode.run()
+    episode.finalize()
     results = json.loads((tmp_path / "results.json").read_text())
     replay = json.loads((tmp_path / "replay").read_text())
     return results, replay, tmp_path
@@ -93,6 +105,39 @@ async def test_scripted_episode_writes_every_artifact(tmp_path: Path):
     status = json.loads((out / "player_status.json").read_text())
     assert [p["state"] for p in status["players"]] == ["exited"] * 4
     assert results["models"][1] == "scripted/greedy"
+
+
+async def test_complete_private_teacher_trajectory_matches_applied_actions(tmp_path: Path, monkeypatch):
+    trajectory = tmp_path / "trajectory.jsonl"
+    monkeypatch.setenv("COGAME_SAVE_TRAJECTORY_URI", trajectory.as_uri())
+    monkeypatch.setenv("COWORLD_EPISODE_ID", "private-teacher-episode")
+    monkeypatch.setenv("COWORLD_GAME_VERSION", "fixture")
+    monkeypatch.setenv("COWORLD_SOURCE_REVISION", "a" * 40)
+    souls = [SOULS / "steady.md", SOULS / "greedy.md", SOULS / "enforcer.md", SOULS / "steady.md"]
+    results, replay, _ = await run_episode(tmp_path, souls, None)
+    complete = json.loads(trajectory.read_text())
+    records = complete["decisions"] + [complete["episode"]]
+    assert records[-1]["event_type"] == "episode" and records[-1]["status"] == "completed"
+    assert records[-1]["outcome"]["scores"] == results["scores"]
+    effects = records[-1]["outcome"]["engine_effects"]
+    assert effects["turns"] == replay["turns"]
+    assert effects["councils"] == replay["communes"]
+    assert effects["lake"] == replay["lake"]
+    decisions = records[:-1]
+    assert len(decisions) == 24 + sum(len(r) for c in replay["communes"] for r in c["rounds"]) + sum(
+        len(c["votes"]) for c in replay["communes"]
+    )
+    for index, record in enumerate(decisions):
+        assert record["decision_index"] == index
+        selected = record["attempts"][0]
+        assert selected["origin"] == "teacher" and selected["platform_call_id"] is None
+        assert selected["parsed_action"] == record["executed_action"]
+        assert record["selected_attempt_id"] == selected["attempt_id"]
+        assert record["prompt"][0]["content"].startswith(
+            souls[int(record["seat"])].read_text().partition("\n")[2].strip()
+        )
+    assert trajectory.stat().st_mode & 0o777 == 0o600
+    assert "attempt_id" not in json.dumps(replay)
 
 
 async def test_soul_seats_think_then_act_and_talk(tmp_path: Path):
@@ -126,7 +171,7 @@ async def test_bad_replies_fall_back_and_are_marked_auto(tmp_path: Path):
     villager = VILLAGER
     souls = [villager, SOULS / "steady.md"]
     transport = FakeTransport(replies=["garbage"] * 200)
-    results, replay, out = await run_episode(tmp_path, souls, transport, commune_rounds=1, turns=2)
+    _results, replay, out = await run_episode(tmp_path, souls, transport, commune_rounds=1, turns=2)
     assert all(0 in turn["auto"] for turn in replay["turns"])
     assert all(s["auto"] for c in replay["communes"] for r in c["rounds"] for s in r if s["slot"] == 0)
     log = (out / "logs" / "policy_agent_0.log").read_text()
@@ -143,6 +188,7 @@ async def test_exhausted_wall_budget_goes_scripted(tmp_path: Path):
     episode = Episode.from_seats(config, 7, document, transport, artifacts, tmp_path / "memory")
     episode.started -= config.episode_wall_seconds + 1
     await episode.run()
+    episode.finalize()
     replay = json.loads((tmp_path / "replay").read_text())
     assert transport.calls == 0
     assert all(turn["auto"] == [0, 1] for turn in replay["turns"])
@@ -169,11 +215,11 @@ async def test_soul_seat_without_transport_crashes_loudly(tmp_path: Path):
     config = config_for(souls)
     seats_path, artifacts = stage_local_episode(config, souls, tmp_path)
     document = load_seats(seats_path.resolve().as_uri())
-    with pytest.raises(RuntimeError, match="OPENROUTER_API_KEY"):
+    with pytest.raises(RuntimeError, match="COWORLD_LLM_ENDPOINT"):
         Episode.from_seats(config, 7, document, None, artifacts)
 
 
-async def test_serve_episode_http_surface(tmp_path: Path, unused_tcp_port: int):
+async def test_serve_episode_http_surface(tmp_path: Path, unused_tcp_port: int, monkeypatch):
     import aiohttp
 
     souls = [SOULS / "steady.md", SOULS / "greedy.md"]
@@ -183,6 +229,14 @@ async def test_serve_episode_http_surface(tmp_path: Path, unused_tcp_port: int):
 
     import asyncio
 
+    admitted = asyncio.Event()
+    run = Episode.run
+
+    async def pause_until_observer_connected(self):
+        await admitted.wait()
+        await run(self)
+
+    monkeypatch.setattr(Episode, "run", pause_until_observer_connected)
     task = asyncio.create_task(serve_episode(config, 7, document, artifacts, "127.0.0.1", unused_tcp_port))
     base = f"http://127.0.0.1:{unused_tcp_port}"
     async with aiohttp.ClientSession() as session:
@@ -203,8 +257,8 @@ async def test_serve_episode_http_surface(tmp_path: Path, unused_tcp_port: int):
         async with session.ws_connect(f"{base}/global") as ws:
             first = json.loads((await ws.receive()).data)
             assert first["type"] == "snapshot" and first["replay"]["schema"] == "overfished-replay/1"
-            pong = await ws.ping(b"sentinel")
-            assert pong is None or True  # aiohttp answers pings at the protocol level
+            await ws.ping(b"sentinel")
+    admitted.set()
     assert await task == 0
     assert (tmp_path / "results.json").exists()
 
@@ -220,23 +274,30 @@ class SlowTransport(FakeTransport):
 
 async def test_decision_deadline_falls_back(tmp_path: Path):
     souls = [VILLAGER, SOULS / "steady.md"]
-    config = config_for(souls, turns=2, commune_rounds=0, llm={"decision_seconds": 0.1, "reasoning": {"effort": "low"}})
+    config = config_for(
+        souls, turns=2, commune_rounds=0, llm={"decision_seconds": 0.1, "reasoning": {"effort": "low"}}
+    )
     seats_path, artifacts = stage_local_episode(config, souls, tmp_path)
     document = load_seats(seats_path.resolve().as_uri())
     transport = SlowTransport()
     episode = Episode.from_seats(config, 7, document, transport, artifacts, tmp_path / "memory")
     await episode.run()
+    episode.finalize()
     replay = json.loads((tmp_path / "replay").read_text())
     assert all(0 in turn["auto"] for turn in replay["turns"])
     assert "exceeded" in (tmp_path / "logs" / "policy_agent_0.log").read_text()
 
 
 @pytest.mark.parametrize("reinstate", [True, False])
-async def test_expulsion_keeps_chat_and_scratchpad_then_restores_fishing(tmp_path: Path, reinstate):
+async def test_expulsion_keeps_chat_and_scratchpad_then_restores_fishing(
+    tmp_path: Path, reinstate, monkeypatch
+):
     class VotingTransport(FakeTransport):
-        target = ""
-        fishing_prompts = []
-        scratchpad_prompts = []
+        def __init__(self):
+            super().__init__()
+            self.target = ""
+            self.fishing_prompts = []
+            self.scratchpad_prompts = []
 
         async def complete(self, **kwargs):
             prompt = kwargs["messages"][-1]["content"]
@@ -244,7 +305,12 @@ async def test_expulsion_keeps_chat_and_scratchpad_then_restores_fishing(tmp_pat
             if prompt.startswith("COUNCIL BALLOT"):
                 self.calls += 1
                 # Expel at the second council; reinstate at the third.
-                target = self.target if slot != 0 and ("before turn 2." in prompt or (reinstate and "before turn 3." in prompt)) else None
+                target = (
+                    self.target
+                    if slot != 0
+                    and ("before turn 2." in prompt or (reinstate and "before turn 3." in prompt))
+                    else None
+                )
                 return json.dumps({"vote": target, "notebook": "remember the ballot"})
             if prompt.startswith("FISHING TURN"):
                 self.fishing_prompts.append((slot, prompt.split(".")[0]))
@@ -252,15 +318,28 @@ async def test_expulsion_keeps_chat_and_scratchpad_then_restores_fishing(tmp_pat
                 self.scratchpad_prompts.append(slot)
             return await super().complete(**kwargs)
 
+    trajectory_path = tmp_path / "trajectory.json"
+    monkeypatch.setenv("COGAME_SAVE_TRAJECTORY_URI", trajectory_path.as_uri())
+    monkeypatch.setenv("COWORLD_EPISODE_ID", "expulsion-evidence")
+    monkeypatch.setenv("COWORLD_GAME_VERSION", "fixture")
+    monkeypatch.setenv("COWORLD_SOURCE_REVISION", "a" * 40)
     souls = [VILLAGER] * 8
     config = config_for(souls, turns=4, commune_every=1, commune_rounds=1)
     seats_path, artifacts = stage_local_episode(config, souls, tmp_path)
     transport = VotingTransport()
-    episode = Episode.from_seats(config, 7, load_seats(seats_path.resolve().as_uri()), transport, artifacts, tmp_path / "memory")
+    episode = Episode.from_seats(
+        config, 7, load_seats(seats_path.resolve().as_uri()), transport, artifacts, tmp_path / "memory"
+    )
     transport.target = episode.engine.pseudonyms[0]
     await episode.run()
+    episode.finalize()
     replay = episode.engine.replay()
-    assert [c["vote_kind"] for c in replay["communes"]] == ["expel", "expel", "reinstate", None if reinstate else "reinstate"]
+    assert [c["vote_kind"] for c in replay["communes"]] == [
+        "expel",
+        "expel",
+        "reinstate",
+        None if reinstate else "reinstate",
+    ]
     assert [c["passed_target"] for c in replay["communes"]] == [None, 0, 0 if reinstate else None, None]
     assert replay["turns"][0]["catch"][0] > 0
     assert replay["turns"][1]["catch"][0] == 0
@@ -270,6 +349,31 @@ async def test_expulsion_keeps_chat_and_scratchpad_then_restores_fishing(tmp_pat
     assert (results["scores"][0] > 0) == reinstate
     assert results["scores"] == replay["scores"]
     assert (0, "FISHING TURN 2") not in transport.fishing_prompts
-    assert len([s for c in replay["communes"] for r in c["rounds"] for s in r if s["slot"] == 0 and s["text"]]) == 4
+    assert (
+        len([s for c in replay["communes"] for r in c["rounds"] for s in r if s["slot"] == 0 and s["text"]])
+        == 4
+    )
     assert 0 in transport.scratchpad_prompts
     assert all(seat.brain.notebook for seat in episode.seats)
+    evidence = json.loads(trajectory_path.read_text())
+    decisions = evidence["decisions"]
+    ballots = [d for d in decisions if d["decision_id"].startswith("ballot-")]
+    assert len(ballots) == (24 if reinstate else 32)
+    assert all(d["attempts"][-1]["parsed_action"] == d["executed_action"] for d in ballots)
+    assert not any(d["decision_id"] == "fishing-2-0" for d in decisions)
+    assert evidence["episode"]["outcome"]["scores"] == results["scores"]
+
+
+@pytest.mark.parametrize("corruption", ["size", "hash"])
+async def test_registered_soul_content_binding_precedes_episode_admission(tmp_path, corruption):
+    souls = [SOULS / "steady.md", SOULS / "greedy.md"]
+    config = config_for(souls)
+    path, artifacts = stage_local_episode(config, souls, tmp_path)
+    document = load_seats(path.as_uri())
+    if corruption == "size":
+        document.seats[0].size_bytes += 1
+    else:
+        document.seats[0].content_hash = "sha256:" + "a" * 64
+    with pytest.raises(ValueError, match="registered hash and size"):
+        Episode.from_seats(config, 7, document, None, artifacts)
+    assert not (tmp_path / "results.json").exists()
