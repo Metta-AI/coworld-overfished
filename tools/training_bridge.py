@@ -11,12 +11,13 @@ from pathlib import Path
 from pydantic import BaseModel
 
 from overfished.config import GameConfig
-from overfished.engine import Action, Engine, Gift, Punishment, Speech
+from overfished.engine import Action, CouncilVote, Engine, Gift, Punishment, Speech
 from overfished.llm import (
     InvalidReply,
     SeatBrain,
     SpeechReply,
     ThinkingReply,
+    VoteReply,
     council_observation,
     extract_json,
     parse_decision_reply,
@@ -25,6 +26,7 @@ from overfished.llm import (
     seat_system_prompt,
     teacher_action_response,
     turn_observation,
+    vote_observation,
 )
 from overfished.memory import SCRATCHPAD_NOTE_BYTES, ScratchpadStore, policy_id
 from overfished.scripted import SCRIPTED_NAMES, ScriptedPolicy, ScriptedView, fallback_action, scripted_policy
@@ -94,6 +96,7 @@ class TrainingSession:
         self.decision_id = 0
         self.seat = 0
         self.actions: list[Action] = []
+        self.votes: list[CouncilVote] = []
         self.earlier: list[list[Speech]] = []
         self.so_far: list[Speech] = []
         self.round_index = 0
@@ -123,6 +126,10 @@ class TrainingSession:
             "pseudonym": engine.pseudonyms[self.seat],
             "turn": engine.turn,
             "fish": list(engine.fish),
+            "scores": engine.scores,
+            "expelled": engine.expelled,
+            "vote_kind": engine.vote_kind,
+            "phase": self.phase,
             "last_catch": list(last.catch) if last else [0] * self.config.num_players,
             "own_last_effort": engine.last_effort[self.seat],
             "boat_capacity": engine.lake.boat_capacity,
@@ -152,11 +159,17 @@ class TrainingSession:
                 self.earlier,
                 self.so_far,
             )
+        elif self.phase == "voting":
+            user = vote_observation(self.engine, self.seat, brain.notebook, self.earlier)
         else:
             user = turn_observation(self.engine, self.seat, brain.notebook)
         return [{"role": "system", "content": system}, {"role": "user", "content": user}]
 
     def observation(self) -> dict[str, object]:
+        if not self.engine.finished and self.phase == "fishing" and self.seat == self.engine.expelled:
+            self.actions.append(Action(effort=0))
+            self.advance_fishing()
+            return self.observation()
         if self.engine.finished and self.phase != "memory_write":
             scores = {seat: float(score) for seat, score in enumerate(self.engine.results()["scores"])}
             scale = self.engine.lake.boat_capacity * self.config.turns.hi / self.config.num_players
@@ -206,6 +219,30 @@ class TrainingSession:
                     "typed_question": None,
                 }
             return {"kind": "speech_turn", **common}
+        if self.phase == "voting":
+            candidates = self.vote_choices()
+            schema = {
+                "type": "object",
+                "properties": (
+                    {"choice": {"type": "integer", "enum": list(candidates)}}
+                    if self.mode == "choice"
+                    else {"vote": {"enum": list(candidates.values())}}
+                ),
+                "required": ["choice" if self.mode == "choice" else "vote"],
+            }
+            question = (
+                {
+                    "state": common["semantic_view"],
+                    "instructions": messages[1]["content"],
+                    "candidates": {
+                        str(choice): {"decision": {"choice": choice}, "criterion": {"vote": target}}
+                        for choice, target in candidates.items()
+                    },
+                }
+                if self.mode == "choice"
+                else None
+            )
+            return {"kind": "decision", **common, "action_schema": schema, "typed_question": question}
         if self.mode == "choice":
             question = {
                 "state": common["semantic_view"],
@@ -236,9 +273,19 @@ class TrainingSession:
             }
         return {"kind": "decision", **common, "action_schema": schema, "typed_question": question}
 
+    def vote_choices(self) -> dict[int, str | None]:
+        return {
+            0: None,
+            **{
+                slot + 1: name
+                for slot, name in enumerate(self.engine.pseudonyms)
+                if slot != self.seat and (self.engine.vote_kind == "expel" or slot == self.engine.expelled)
+            },
+        }
+
     def encode(self) -> dict[str, object]:
-        if self.mode != "choice" or self.phase != "fishing":
-            raise ValueError("Numeric encoding requires a fishing choice")
+        if self.mode != "choice" or self.phase not in {"fishing", "voting"}:
+            raise ValueError("Numeric encoding requires a fishing or ballot choice")
         last = self.engine.turns[-1] if self.engine.turns else None
         fish = list(self.engine.fish) + [0] * (MAX_SEATS - self.config.num_players)
         catches = list(last.catch) + [0] * (MAX_SEATS - self.config.num_players) if last else [0] * MAX_SEATS
@@ -248,16 +295,23 @@ class TrainingSession:
             self.engine.fish[self.seat] / (100 + self.engine.fish[self.seat]),
             self.engine.lake.boat_capacity / 100,
             self.engine.last_effort[self.seat],
+            float(self.phase == "voting"),
+            (self.engine.expelled + 1) / MAX_SEATS if self.engine.expelled is not None else 0.0,
             *(value / (100 + value) for value in fish),
             *(value / (50 + value) for value in catches),
         ]
         return {
             "decision_id": self.decision_id,
             "values": values,
-            "actions": [{"choice": choice} for choice in range(len(CHOICES))],
+            "actions": [
+                {"choice": choice}
+                for choice in (self.vote_choices() if self.phase == "voting" else range(len(CHOICES)))
+            ],
         }
 
     def teacher(self) -> dict[str, str]:
+        if self.phase == "voting":
+            return {"response": compact({"choice": 0} if self.mode == "choice" else {"vote": None})}
         if self.phase == "memory_read":
             assert self.memory is not None
             memory = self.memory.read(self.policy_ids[self.seat])
@@ -299,8 +353,12 @@ class TrainingSession:
             self.speaker_index = 0
             self.round_index += 1
             if self.round_index == self.config.commune_rounds:
-                self.engine.record_commune(self.earlier, self.order)
-                self.phase = "fishing"
+                if self.engine.vote_kind is not None:
+                    self.phase = "voting"
+                    self.votes = []
+                else:
+                    self.engine.record_commune(self.earlier, self.order)
+                    self.phase = "fishing"
                 self.seat = 0
             else:
                 self.seat = self.order[0]
@@ -317,7 +375,9 @@ class TrainingSession:
             return self.step_choice(request)
         response = str(request["response"])
         self.calls += 1
-        parsed = parse_decision_reply(response, self.brains[self.seat], self.engine, self.phase == "council")
+        parsed = parse_decision_reply(
+            response, self.brains[self.seat], self.engine, self.phase == "council", self.phase == "voting"
+        )
         consumed = ""
         if isinstance(parsed, (ThinkingReply, InvalidReply)):
             self.conversation.append({"role": "assistant", "content": response})
@@ -344,8 +404,14 @@ class TrainingSession:
                     "action": {"say": ""},
                     "observation": result["observation"],
                 }
+            if self.phase == "voting":
+                result = self.apply_vote(CouncilVote(auto=True))
+                result.update(kind="consumed_rejection", reason=reason)
+                return result
             action = fallback_action(self.engine, self.seat)
             consumed = reason
+        elif isinstance(parsed, VoteReply):
+            return self.apply_vote(parsed.vote)
         elif isinstance(parsed, SpeechReply):
             result = self.say({"decision_id": self.decision_id, "text": parsed.text})
             return {
@@ -363,6 +429,21 @@ class TrainingSession:
             "action": action.model_dump(mode="json"),
             "observation": self.observation(),
         }
+
+    def apply_vote(self, vote: CouncilVote) -> dict[str, object]:
+        action = {"vote": self.engine.pseudonyms[vote.target] if vote.target is not None else None}
+        self.votes.append(vote)
+        self.decision_id += 1
+        self.conversation = []
+        self.calls = 0
+        self.retries_left = 1
+        self.thinks_left = self.config.llm.think_turns
+        self.seat += 1
+        if self.seat == self.config.num_players:
+            self.engine.record_commune(self.earlier, self.order, self.votes)
+            self.phase = "fishing"
+            self.seat = 0
+        return {"kind": "accepted", "action": action, "observation": self.observation()}
 
     def step_memory(self, request: dict[str, object]) -> dict[str, object]:
         assert self.memory is not None
@@ -410,8 +491,16 @@ class TrainingSession:
         }
 
     def step_choice(self, request: dict[str, object]) -> dict[str, object]:
+        if self.phase == "voting":
+            reply = extract_json(str(request["response"]))
+            choice = reply.get("choice") if reply is not None else None
+            if type(choice) is not int or choice not in self.vote_choices():
+                return {"kind": "rejected", "reason": "illegal ballot choice"}
+            result = self.apply_vote(CouncilVote(target=choice - 1 if choice else None))
+            result["action"] = {"choice": choice}
+            return result
         if self.phase != "fishing":
-            return {"kind": "rejected", "reason": "numeric decisions require fishing phase"}
+            return {"kind": "rejected", "reason": "numeric decisions require fishing or voting phase"}
         reply = extract_json(str(request["response"]))
         if reply is None:
             return {"kind": "rejected", "reason": "response needs one JSON object"}

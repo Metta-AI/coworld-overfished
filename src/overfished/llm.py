@@ -33,7 +33,7 @@ from pydantic import (
 )
 
 from overfished.config import GameConfig
-from overfished.engine import Action, Engine, Gift, Punishment
+from overfished.engine import Action, CouncilVote, Engine, Gift, Punishment
 from overfished.lifecycle import OwnershipUnsettled, cleanup_deadline, owned_task, settle
 from overfished.memory import SCRATCHPAD_MAX_BYTES, SCRATCHPAD_NOTE_BYTES, MemoryView
 from overfished.soul import Soul
@@ -372,7 +372,14 @@ def mechanics_block(
         "in a fixed order, each reading everything said before them in that council; the order is the same in "
         "every round of a council and the first speaker rotates each council. You may say nothing. Council messages "
         f"are public and permanent, at most {llm.say_max_chars} characters each. Nothing said at a council is "
-        "enforced by the game."
+        "enforced by the game except the separate public ballot at its end. Each fisher may vote for one other "
+        "fisher or abstain. Expulsion and reinstatement each require at least three quarters of the original "
+        "seats (rounded up; six of eight), excluding the target’s own vote. Only one successful expulsion is "
+        "allowed per episode. Later councils can reinstate that fisher; no second expulsion is possible. "
+        "While expelled, a fisher scores zero, cannot fish, give gifts, or punish, and their balance is frozen "
+        "against gifts and punishments. They may still chat and edit their notebook and scratchpad. "
+        "Reinstatement restores access to their previous balance and normal scoring. Ballots are collected "
+        "simultaneously after all speeches, then published."
         if config.commune_rounds > 0
         else "COUNCIL. There is no council in this variant."
     )
@@ -423,7 +430,7 @@ public: everyone sees who gave whom how much.
 {memory_rules}
 
 PRIVACY. Your thinking and your notebook are private: no other fisher and no public record ever sees them.
-Only `say` at a council is public. Your notebook is handed back to you every turn, up to
+Council `say` and `vote` are public. Your notebook is handed back to you every turn, up to
 {llm.notebook_max_chars} characters.
 
 REPLY FORMAT. Reply with exactly one JSON object and nothing else. Keep `thinking` under 150 words: a decision
@@ -434,6 +441,8 @@ nothing). On a fishing turn:
    "gift": [{{"target": "<fisher name>", "fish": <whole number>}}]}}
   `punish` and `gift` may be empty lists. At a council:
   {{"thinking": "<private>", "notebook": "<private>", "say": "<public message, or an empty string>"}}
+At the separate council ballot, reply {{"vote": "<other fisher name, or null to abstain>",
+"notebook": "<private>", "thinking": "<private>"}}.
 You may instead reply {{"thinking": "<private>", "continue": true}} to keep reasoning privately before
 committing; you get at most {llm.think_turns} such replies per decision, after which you must decide.
 """.strip()
@@ -506,6 +515,22 @@ def _council_transcript(engine: Engine, count: int) -> str:
         for r, speeches in enumerate(commune.rounds):
             said = [f'{names[s.slot]}: "{s.text}"' for s in speeches if s.text]
             lines.append(f"  round {r + 1}: " + (" | ".join(said) if said else "(silence)"))
+        if commune.vote_kind:
+            lines.append(
+                f"  Public {commune.vote_kind} votes: "
+                + "; ".join(
+                    f"{names[i]}: {names[v.target] if v.target is not None else 'abstain'}"
+                    for i, v in enumerate(commune.votes)
+                )
+            )
+            lines.append(
+                "  Result: "
+                + (
+                    f"{names[commune.passed_target]} {commune.vote_kind} vote passed"
+                    if commune.passed_target is not None
+                    else "no change"
+                )
+            )
         parts.append("\n".join(lines))
     return "\n".join(parts)
 
@@ -520,6 +545,38 @@ def _next_council(engine: Engine) -> str:
     return f"The next council is before turn {next_before}, if the episode lasts that long."
 
 
+def council_status(engine: Engine) -> str:
+    expelled = engine.expelled
+    return (
+        f"EXPULSION STATUS (public): {engine.pseudonyms[expelled] + ' is expelled; balance frozen, score zero' if expelled is not None else 'nobody expelled'}. "
+        f"Expulsion used: {engine.expulsion_used}. Next ballot: {engine.vote_kind or 'none'}. "
+        f"Votes required: {engine.votes_required} of {engine.config.num_players}; self-votes do not count."
+    )
+
+
+def vote_observation(engine: Engine, slot: int, notebook: str, rounds: list[list]) -> str:
+    transcript = "\n".join(
+        f"Round {r + 1}, {engine.pseudonyms[s.slot]}: {s.text}"
+        for r, speeches in enumerate(rounds)
+        for s in speeches
+    )
+    return "\n\n".join(
+        [
+            f"COUNCIL BALLOT before turn {engine.turn}. You are {engine.pseudonyms[slot]}.",
+            council_status(engine),
+            policy_roster(engine),
+            _ledger(engine, engine.config.history_turns),
+            _council_transcript(engine, 2),
+            "This council's complete discussion:\n" + transcript,
+            f"YOUR NOTEBOOK: {notebook or '(empty)'}",
+            "Vote to "
+            + str(engine.vote_kind)
+            + '. Reply with {"vote": "<other fisher name>"} or {"vote": null} to abstain. '
+            "You may also include private thinking and notebook edits. All votes will be published.",
+        ]
+    )
+
+
 def turn_observation(engine: Engine, slot: int, notebook: str) -> str:
     config = engine.config
     name = engine.pseudonyms[slot]
@@ -532,6 +589,7 @@ def turn_observation(engine: Engine, slot: int, notebook: str) -> str:
     return "\n\n".join(
         [
             f"FISHING TURN {engine.turn}. You are {name}.\n{own}",
+            council_status(engine),
             policy_roster(engine),
             _ledger(engine, config.history_turns),
             _punishments(engine, config.history_turns),
@@ -586,6 +644,7 @@ def council_observation(
         [
             this,
             f"Your fish: {engine.fish[slot]}.",
+            council_status(engine),
             policy_roster(engine),
             _ledger(engine, config.history_turns),
             _punishments(engine, config.history_turns),
@@ -624,6 +683,24 @@ def extract_json(text: str) -> dict | None:
             continue
         return value if isinstance(value, dict) else None
     return None
+
+
+def parse_vote(reply: dict, engine: Engine, slot: int) -> CouncilVote | str:
+    target = reply.get("vote")
+    target_slot = engine.slot_of(target) if isinstance(target, str) else None
+    if "vote" in reply and (
+        target is None
+        or (
+            target_slot is not None
+            and target_slot != slot
+            and (
+                engine.vote_kind == "expel"
+                or (engine.vote_kind == "reinstate" and target_slot == engine.expelled)
+            )
+        )
+    ):
+        return CouncilVote(target=target_slot)
+    return "`vote` must be null or the name of an eligible other fisher"
 
 
 def parse_action(reply: dict, engine: Engine, slot: int) -> Action | str:
@@ -711,6 +788,7 @@ class SeatBrain:
 class Decision:
     action: Action | None = None
     say: str | None = None
+    vote: CouncilVote | None = None
     auto: bool = False
     transcript: list[str] = field(default_factory=list)
     attempts: list[Attempt] = field(default_factory=list)
@@ -734,6 +812,12 @@ class ActionReply(BaseModel):
     action: Action
 
 
+class VoteReply(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    kind: Literal["vote"] = "vote"
+    vote: CouncilVote
+
+
 class SpeechReply(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
     kind: Literal["speech"] = "speech"
@@ -745,7 +829,8 @@ def parse_decision_reply(
     brain: SeatBrain,
     engine: Engine,
     council: bool,
-) -> InvalidReply | ThinkingReply | ActionReply | SpeechReply:
+    voting: bool = False,
+) -> InvalidReply | ThinkingReply | ActionReply | SpeechReply | VoteReply:
     """The hosted and training paths share private memory and action parsing."""
     reply = extract_json(text)
     if reply is None:
@@ -758,8 +843,15 @@ def parse_decision_reply(
         brain.last_thinking.append(thinking)
     if "notebook" in reply:
         brain.notebook = clip(reply["notebook"], engine.config.llm.notebook_max_chars)
-    if reply.get("continue") is True and "effort" not in reply and "say" not in reply:
+    if reply.get("continue") is True and "effort" not in reply and "say" not in reply and "vote" not in reply:
         return ThinkingReply()
+    if voting:
+        parsed_vote = parse_vote(reply, engine, brain.slot)
+        if isinstance(parsed_vote, CouncilVote):
+            return VoteReply(vote=parsed_vote)
+        return InvalidReply(
+            reason=parsed_vote, retry_message=f"Invalid: {parsed_vote}. Reply with one corrected JSON object."
+        )
     if council:
         return SpeechReply(text=clip(reply.get("say"), engine.config.llm.say_max_chars))
     parsed = parse_action(reply, engine, brain.slot)
@@ -821,26 +913,32 @@ async def decide(
     council: bool,
     think_turns: int,
     log: Callable[[str], None],
+    voting: bool = False,
 ) -> Decision:
     """Run the private thinking loop until the seat commits to an action or a council message."""
     config = engine.config.llm
     decision = Decision()
     try:
         async with asyncio.timeout(config.decision_seconds):
-            await _decide_calls(brain, transport, engine, observation, council, think_turns, log, decision)
+            await _decide_calls(
+                brain, transport, engine, observation, council, think_turns, log, decision, voting
+            )
     except TimeoutError:
         log(f"decision exceeded {config.decision_seconds:.0f}s in total; falling back")
         decision.action = None
         decision.say = None
+        decision.vote = None
         if decision.attempts:
             decision.attempts[-1].rejection_reason = "whole decision deadline exceeded"
-    if decision.action is None and decision.say is None:
+    if decision.action is None and decision.say is None and decision.vote is None:
         decision.auto = True
         brain.fallbacks += 1
     return decision
 
 
-async def _decide_calls(brain, transport, engine, observation, council, think_turns, log, decision) -> None:
+async def _decide_calls(
+    brain, transport, engine, observation, council, think_turns, log, decision, voting
+) -> None:
     config = engine.config.llm
     messages = [{"role": "system", "content": brain.system_prompt}, {"role": "user", "content": observation}]
     thinks_left = think_turns
@@ -870,7 +968,7 @@ async def _decide_calls(brain, transport, engine, observation, council, think_tu
         decision.transcript.append(reply_text)
         evidence.response = reply_text
         previous_thoughts = len(brain.last_thinking)
-        parsed = parse_decision_reply(reply_text, brain, engine, council)
+        parsed = parse_decision_reply(reply_text, brain, engine, council, voting)
         if len(brain.last_thinking) > previous_thoughts:
             log(f"thinking: {brain.last_thinking[-1]}")
         if isinstance(parsed, ThinkingReply):
@@ -894,6 +992,14 @@ async def _decide_calls(brain, transport, engine, observation, council, think_tu
                 }
             )
             continue
+        if isinstance(parsed, VoteReply):
+            decision.vote = parsed.vote
+            evidence.parsed_action = {
+                "vote": engine.pseudonyms[parsed.vote.target] if parsed.vote.target is not None else None
+            }
+            evidence.accepted = True
+            evidence.rejection_reason = None
+            return
         if isinstance(parsed, SpeechReply):
             decision.say = parsed.text
             evidence.parsed_action = {"say": parsed.text}
@@ -931,7 +1037,8 @@ def final_observation(engine: Engine, slot: int, notebook: str) -> str:
     history = engine.config.history_turns
     return "\n\n".join(
         [
-            f"FINAL RESULTS. You are {engine.pseudonyms[slot]}. Your score: {engine.fish[slot]}.",
+            f"FINAL RESULTS. You are {engine.pseudonyms[slot]}. Your score: {engine.scores[slot]}.",
+            council_status(engine),
             policy_roster(engine),
             _ledger(engine, history),
             _punishments(engine, history),

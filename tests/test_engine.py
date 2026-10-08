@@ -285,3 +285,69 @@ def test_episode_length_is_sampled_and_hidden():
     assert len(engine.turns) == engine.turn_limit
     text = turn_observation(Engine(config(turns={"lo": 25, "hi": 45}), 3), 0, "")
     assert "of 25" not in text and "of 45" not in text and "no more councils" not in text
+
+
+def ballots(target, supporters):
+    from overfished.engine import CouncilVote
+
+    return [CouncilVote(target=target if slot in supporters else None) for slot in range(8)]
+
+
+def test_expulsion_threshold_frozen_balance_and_reinstatement():
+    engine = Engine(config(turns=10), 7)
+    engine.resolve_turn([Action(effort=0.4)] * 8)
+    before = engine.fish[0]
+    # Five other voters plus the target's own vote is insufficient.
+    failed = engine.record_commune([], votes=ballots(0, range(6)))
+    assert failed.passed_target is None and not engine.expulsion_used
+    assert failed.votes[0].target is None
+    engine.resolve_turn([Action(effort=0)] * 8)
+    passed = engine.record_commune([], votes=ballots(0, range(1, 7)))
+    assert passed.passed_target == 0 and engine.expelled == 0
+    assert engine.results()["scores"][0] == engine.replay()["scores"][0] == 0
+    assert engine.fish[0] == before
+    actions = [Action(effort=1, gift=[Gift(target=1, fish=5)], punish=[Punishment(target=1, fish=3)])]
+    actions += [Action(effort=0, gift=[Gift(target=0, fish=5)], punish=[Punishment(target=0, fish=3)])] * 7
+    turn = engine.resolve_turn(actions)
+    assert turn.catch[0] == turn.effort[0] == 0
+    assert turn.gift == turn.punish == []
+    assert engine.fish[0] == before
+    assert engine.record_commune([], votes=ballots(0, range(6))).passed_target is None
+    engine.resolve_turn([Action(effort=0)] * 8)
+    reinstated = engine.record_commune([], votes=ballots(0, range(1, 7)))
+    assert reinstated.vote_kind == "reinstate" and reinstated.passed_target == 0
+    assert engine.expelled is None and engine.expulsion_used
+    assert engine.scores[0] == before
+    turn = engine.resolve_turn([Action(effort=0.4)] * 8)
+    assert turn.catch[0] > 0 and engine.scores[0] == before + turn.catch[0]
+    assert engine.record_commune([], votes=ballots(1, [0, 2, 3, 4, 5, 6, 7])).passed_target is None
+    assert engine.expelled is None
+
+
+def test_split_votes_invalid_targets_and_duplicate_council():
+    from overfished.engine import CouncilVote
+
+    engine = Engine(config(), 7)
+    votes = [CouncilVote(target=t) for t in [1, 0, 0, 0, 1, 1, 1, 99]]
+    record = engine.record_commune([], votes=votes)
+    assert record.passed_target is None and record.votes[-1].target is None
+    with pytest.raises(ValueError, match="already resolved"):
+        engine.record_commune([], votes=ballots(0, range(1, 8)))
+
+
+@pytest.mark.parametrize("seats,required", [(3, 3), (4, 3), (7, 6), (8, 6), (9, 7)])
+def test_vote_threshold_uses_original_roster(seats, required):
+    assert Engine(config(seats=seats), 7).votes_required == required
+
+
+def test_public_votes_and_expulsion_status_reach_observations():
+    from overfished.llm import council_observation, final_observation, turn_observation
+
+    engine = Engine(config(), 7)
+    engine.fish[0] = 23
+    engine.record_commune([], votes=ballots(0, range(1, 7)))
+    for text in [turn_observation(engine, 1, ""),
+                 council_observation(engine, 0, "", 0, list(range(8)), [], [])]:
+        assert "is expelled" in text and "Public expel votes" in text
+        assert f"{engine.pseudonyms[1]}: {engine.pseudonyms[0]}" in text
+    assert "Your score: 0." in final_observation(engine, 0, "")

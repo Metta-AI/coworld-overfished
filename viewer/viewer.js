@@ -969,7 +969,7 @@
     return `<svg class="av" viewBox="0 0 60 72" aria-hidden="true"><use href="#av-${slot}"/></svg>`;
   }
 
-  function renderLedger(fish, lastTurn, upTo) {
+  function renderLedger(fish, lastTurn, upTo, councilTurn = upTo) {
     const totals = replay.players.map(() => 0);
     const hits = replay.players.map(() => 0);
     for (let i = 0; i < upTo; i++) {
@@ -981,7 +981,10 @@
       for (const p of lastTurn.punish) hits[p.to] += p.fish;
       for (const g of lastTurn.gift || []) { received[g.to] += g.fish; gave[g.frm] += g.fish; }
     }
-    const order = replay.players.map((_, i) => i).sort((a, b) => fish[b] - fish[a] || a - b);
+    const council = replay.communes.filter((c) => c.before_turn <= councilTurn).pop();
+    const expelled = council?.expelled;
+    const scores = fish.map((balance, slot) => slot === expelled ? 0 : balance);
+    const order = replay.players.map((_, i) => i).sort((a, b) => scores[b] - scores[a] || a - b);
     ledgerBody.innerHTML = "";
     order.forEach((s, rank) => {
       const tr = document.createElement("tr");
@@ -991,9 +994,9 @@
       const giftTxt = (received[s] ? ` <span class="gift">+${received[s]}</span>` : "") + (gave[s] ? ` <span class="gift">−${gave[s]}</span>` : "");
       const fortuneTxt = lastTurn && lastTurn.fortune ? ` <span class="fortune">×${lastTurn.fortune[s].toFixed(2)}</span>` : "";
       tr.innerHTML = `<td class="num">${rank + 1}</td>` +
-        `<td class="name">${avatarChip(s)}<span class="who"><span class="swatch" style="background:${seatSpecs[s].color}"></span>${escapeHtml(player.pseudonym)}` +
+        `<td class="name">${avatarChip(s)}<span class="who"><span class="swatch" style="background:${seatSpecs[s].color}"></span>${escapeHtml(player.pseudonym)}${s === expelled ? " · expelled" : ""}` +
         `<span class="model" title="${escapeHtml(player.policy)}">${escapeHtml(player.policy.replace(/^sha256:/, "").slice(0, 12))}${player.model ? " · " + escapeHtml(player.model) : ""}</span></span></td>` +
-        `<td class="num">${fish[s]}</td>` +
+        `<td class="num" title="Balance: ${fish[s]}">${scores[s]}</td>` +
         `<td class="num"><span class="delta ${lastTurn && lastTurn.catch[s] === 0 ? "zero" : ""}">${catchTxt}</span>${fortuneTxt}${hitTxt}${giftTxt}</td>` +
         `<td class="num">${totals[s]}</td>`;
       ledgerBody.appendChild(tr);
@@ -1057,6 +1060,21 @@
         latest = s;
       }
     });
+    const speechCount = commune.rounds.reduce((sum, round) => sum + round.length, 0);
+    if (commune.vote_kind && (visibleCount === null || visibleCount >= speechCount)) {
+      const ballot = document.createElement("div");
+      ballot.className = "round";
+      const outcome = commune.passed_target == null ? "No change" :
+        `${replay.players[commune.passed_target].pseudonym} ${commune.vote_kind === "expel" ? "expelled" : "reinstated"}`;
+      ballot.textContent = `Public ${commune.vote_kind === "expel" ? "expulsion" : "reinstatement"} vote · ${outcome}`;
+      councilBody.appendChild(ballot);
+      (commune.votes || []).forEach((vote, slot) => {
+        const row = document.createElement("div");
+        row.className = "speech";
+        row.textContent = `${replay.players[slot].pseudonym}: ${vote.target == null ? "abstain" : replay.players[vote.target].pseudonym}${vote.auto ? " (default)" : ""}`;
+        councilBody.appendChild(row);
+      });
+    }
     councilBody.scrollTop = councilBody.scrollHeight;
     huts.forEach((h, i) => h.glow.classList.toggle("show", showCaption && !!latest && latest.slot === i));
     if (showCaption && latest) showLeaf(latest);
@@ -1120,6 +1138,8 @@
     const total = commune.rounds.reduce((a, r) => a + r.length, 0);
     const visible = p === null ? total : Math.min(total, Math.floor(p * (total + 1)));
     renderCouncil(commune, visible, true);
+    renderLedger(fishBefore(turnIndex), turnIndex > 0 ? replay.turns[turnIndex - 1] : null,
+      turnIndex, visible >= total ? commune.before_turn : turnIndex);
   }
 
   function renderAt(time) {
@@ -1141,7 +1161,9 @@
       lastEventKey = "";
       return;
     }
-    if (replay.turns.length) renderTurnFrame(replay.turns.length - 1, 1);
+    if (replay.communes.length && replay.communes[replay.communes.length - 1].before_turn > replay.turns.length)
+      renderCouncilFrame(replay.communes.length - 1, null);
+    else if (replay.turns.length) renderTurnFrame(replay.turns.length - 1, 1);
     else if (replay.communes.length) renderCouncilFrame(replay.communes.length - 1, null);
     else {
       renderFish(replay.lake.initial_stock);

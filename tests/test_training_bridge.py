@@ -86,13 +86,13 @@ def test_certification_game_uses_player_views_and_real_scores(mode: str) -> None
         else:
             if mode == "choice":
                 encoding = session.encode()
-                assert len(encoding["values"]) == 37
-                assert len(encoding["actions"]) == 15
+                assert len(encoding["values"]) == 39
+                assert len(encoding["actions"]) == (8 if session.phase == "voting" else 15)
             observation = session.step(
                 {"decision_id": observation["decision_id"], "response": session.teacher()["response"]}
             )["observation"]
     assert counts == (
-        {"speech_turn": 48, "decision": 96} if mode == "choice" else {"speech_turn": 0, "decision": 144}
+        {"speech_turn": 48, "decision": 120} if mode == "choice" else {"speech_turn": 0, "decision": 168}
     )
     assert observation["scores"] == {seat: float(score) for seat, score in enumerate(session.engine.fish)}
     assert all(0 <= utility < 1 for utility in observation["utilities"].values())
@@ -131,6 +131,47 @@ def test_jsonl_process_reuses_seeded_session() -> None:
         assert observation["kind"] == "speech_turn"
     process.stdin.close()
     assert process.wait(timeout=5) == 0
+
+
+@pytest.mark.parametrize("mode", ["choice", "text"])
+def test_training_ballots_expel_and_reinstate_without_leaking_pending_votes(mode):
+    session = TrainingSession("certification", mode, 6, [ROOT / "souls/steady.md"] * 8, None)
+    observation = session.reset({"seed": "ballots", "players": 8})
+    target_name = session.engine.pseudonyms[0]
+    ballots_seen = 0
+    while observation["kind"] != "terminal":
+        if observation["kind"] == "speech_turn":
+            observation = session.say({"decision_id": session.decision_id, "text": "Council chat"})[
+                "observation"
+            ]
+            continue
+        if session.phase == "voting":
+            ballots_seen += 1
+            if session.seat == 1:
+                bad = {"choice": 2} if mode == "choice" else {"vote": session.engine.pseudonyms[1]}
+                assert (
+                    session.step({"decision_id": session.decision_id, "response": json.dumps(bad)})["kind"]
+                    == "rejected"
+                )
+            if session.engine.turn == 1:
+                assert session.engine.communes == []  # No partial ballots in public state.
+            reply = (
+                {"choice": 0 if session.seat == 0 else 1}
+                if mode == "choice"
+                else {"vote": None if session.seat == 0 else target_name}
+            )
+            response = json.dumps(reply)
+        else:
+            if session.phase == "fishing":
+                assert session.seat != session.engine.expelled
+            response = session.teacher()["response"]
+        observation = session.step({"decision_id": session.decision_id, "response": response})["observation"]
+    assert ballots_seen == 16
+    assert [c.passed_target for c in session.engine.communes] == [0, 0]
+    resumed = session.engine.communes[1].before_turn - 1
+    assert all(t.catch[0] == 0 for t in session.engine.turns[:resumed])
+    assert session.engine.turns[resumed].catch[0] > 0
+    assert session.engine.expulsion_used and session.engine.expelled is None
 
 
 def test_language_teacher_uses_registered_scripted_soul():

@@ -179,6 +179,28 @@ Local runs use an append-only history under `--scratchpad-dir` (default `runs/sc
 note and byte bounds but no automatic compaction. Concurrent appends are locked, and duplicate seats share a
 single contribution budget.
 
+## Public council ballots
+
+After all speaking rounds, each seat receives a separate `COUNCIL BALLOT` decision with the complete discussion.
+Reply with `{"vote": "<other fisher pseudonym>"}` or `{"vote": null}` to abstain. Private `thinking` and `notebook`
+edits work as in other decisions. Missing, invalid, or timed-out ballots default to abstention after the usual
+retry. All ballots are published together, including abstentions, in seat order.
+
+A vote needs `ceil(3 * original_seat_count / 4)` supporters for a single target (six of eight). Self-votes never
+count. Failed ballots do not consume the episode's single successful expulsion. While someone is expelled,
+ballots can only reinstate that person; after reinstatement, no further expulsion is allowed.
+
+Expelled fishers receive no fishing decisions and score zero while expelled. Their balances are frozen;
+gifts and punishments to or from them have no effect. Council speech, notebook edits during councils, and the
+normal end-of-episode scratchpad update remain available. Reinstatement resumes fishing and normal scoring
+with the previous balance.
+
+The training bridge exposes ballots as `decision` requests. Text mode uses the same `vote` reply. Choice mode
+uses `0` to abstain and `slot + 1` to target another eligible seat; `typed_question` and `encode.actions` list
+legal choices. The numeric observation has 39 values, including a ballot-phase flag and the expelled seat
+(encoded as `(slot + 1) / 16`, or zero for none). Ballots stay unpublished until all seats have voted.
+
+
 The text training bridge requires the actual soul-file roster and supports the same private scratchpad
 read/write prompts with an explicit memory directory. Numeric choice mode is a separate restricted
 research action space. Preserve the selected memory mode and source-owned policy hashes across evaluation.

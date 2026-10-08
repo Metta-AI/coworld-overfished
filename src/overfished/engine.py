@@ -92,9 +92,20 @@ class TurnRecord(BaseModel):
     auto: list[int]
 
 
+class CouncilVote(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    target: int | None = Field(default=None, ge=0)
+    auto: bool = False
+
+
 class CommuneRecord(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    vote_kind: str | None = None
+    votes: list[CouncilVote] = Field(default_factory=list, description="Public ballots in seat order; null means abstain.")
+    passed_target: int | None = None
+    expelled: int | None = None
     before_turn: int
     order: list[int] = Field(description="Speaking order, the same in every round; the first seat rotates per council.")
     rounds: list[list[Speech]] = Field(description="Speeches in speaking order.")
@@ -157,6 +168,8 @@ class Engine:
         self.last_effort: list[float] = [0.0 for _ in range(config.num_players)]
         self.turns: list[TurnRecord] = []
         self.communes: list[CommuneRecord] = []
+        self.expelled: int | None = None
+        self.expulsion_used = False
 
     # ---- progression ----------------------------------------------------------------
 
@@ -184,8 +197,47 @@ class Engine:
         first = len(self.communes) % n
         return [(first + i) % n for i in range(n)]
 
-    def record_commune(self, rounds: list[list[Speech]], order: list[int] | None = None) -> CommuneRecord:
-        record = CommuneRecord(before_turn=self.turn, order=order or self.council_order(), rounds=rounds)
+    @property
+    def votes_required(self) -> int:
+        return math.ceil(3 * self.config.num_players / 4)
+
+    @property
+    def vote_kind(self) -> str | None:
+        if self.expelled is not None:
+            return "reinstate"
+        return None if self.expulsion_used else "expel"
+
+    @property
+    def scores(self) -> list[int]:
+        return [0 if slot == self.expelled else fish for slot, fish in enumerate(self.fish)]
+
+    def record_commune(
+        self, rounds: list[list[Speech]], order: list[int] | None = None,
+        votes: list[CouncilVote] | None = None,
+    ) -> CommuneRecord:
+        if self.finished or (self.communes and self.communes[-1].before_turn == self.turn):
+            raise ValueError("council already resolved or episode over")
+        kind = self.vote_kind
+        ballots = votes if votes is not None else [CouncilVote() for _ in self.fish]
+        if len(ballots) != self.config.num_players:
+            raise ValueError("one ballot per seat is required")
+        valid = []
+        for slot, ballot in enumerate(ballots):
+            target = ballot.target
+            if (kind is None or target == slot or target is None
+                    or target >= self.config.num_players
+                    or (kind == "reinstate" and target != self.expelled)):
+                target = None
+            valid.append(CouncilVote(target=target, auto=ballot.auto))
+        passed = next((target for target in range(self.config.num_players)
+                       if sum(v.target == target for v in valid) >= self.votes_required), None)
+        if passed is not None:
+            self.expelled = passed if kind == "expel" else None
+            self.expulsion_used = True
+        record = CommuneRecord(
+            before_turn=self.turn, order=order or self.council_order(), rounds=rounds,
+            vote_kind=kind, votes=valid, passed_target=passed, expelled=self.expelled,
+        )
         self.communes.append(record)
         return record
 
@@ -194,6 +246,8 @@ class Engine:
             raise ValueError("one action per seat is required")
         if self.finished:
             raise ValueError("the episode is over")
+        actions = [Action(effort=0) if slot == self.expelled else action
+                   for slot, action in enumerate(actions)]
         stock_before = self.stock
         density = self.stock / self.lake.capacity
         luck = random.Random(f"fortune:{self.seed}:{self.turn}")
@@ -209,7 +263,7 @@ class Engine:
         for slot, action in enumerate(actions):
             budget = self.config.gift_max
             for g in action.gift:
-                if g.target == slot or not 0 <= g.target < self.config.num_players:
+                if g.target == self.expelled or g.target == slot or not 0 <= g.target < self.config.num_players:
                     continue
                 fish = min(g.fish, budget, self.fish[slot])
                 if fish <= 0:
@@ -223,7 +277,7 @@ class Engine:
         ratio = self.config.punish_ratio
         for slot, action in enumerate(actions):
             for p in action.punish:
-                if p.target == slot or not 0 <= p.target < self.config.num_players:
+                if p.target == self.expelled or p.target == slot or not 0 <= p.target < self.config.num_players:
                     continue
                 burned = min(p.fish, self.fish[slot])
                 destroyed = min(burned * ratio, self.fish[p.target])
@@ -283,13 +337,15 @@ class Engine:
             "players": players,
             "turns": [t.model_dump() for t in self.turns],
             "communes": [c.model_dump() for c in self.communes],
-            "scores": list(self.fish),
+            "scores": self.scores,
+            "expelled": self.expelled,
+            "expulsion_used": self.expulsion_used,
         }
 
     def results(self) -> dict:
         collapsed = self.stock < self.lake.collapse_threshold
         return {
-            "scores": [float(f) for f in self.fish],
+            "scores": [float(f) for f in self.scores],
             "pseudonyms": list(self.pseudonyms),
             **({"policy_ids": list(self.policy_ids)} if self.policy_ids is not None else {}),
             "turns_played": len(self.turns),

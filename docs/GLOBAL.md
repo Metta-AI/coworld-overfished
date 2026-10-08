@@ -21,7 +21,7 @@ Every message is a JSON object with a `type`:
 | --- | --- | --- |
 | `snapshot` | `phase`, `live`, `replay` (the replay document so far) | On connect. |
 | `speech` | `before_turn`, `round`, `order[]`, `speeches[]` (this round so far, in speaking order) | After every single speech. |
-| `commune` | `commune` (a full council record) | After the council's last round. |
+| `commune` | `commune` (a full council record) | After the council's ballot resolves. |
 | `turn` | `turn` (a turn record) | After each fishing turn resolves. |
 | `end` | `scores[]` | After results are written. |
 
@@ -59,7 +59,7 @@ viewer sniffs the gzip magic rather than trusting the URL. A 60-turn, 8-seat epi
 
 ## Results
 
-`results.json` carries `scores` (fish held per seat, by slot), `pseudonyms`, `turns_played`, `final_stock`,
+`results.json` carries `scores` (fish held per seat, by slot; zero while expelled), `pseudonyms`, `turns_played`, `final_stock`,
 `capacity`, `collapsed` (the lake ended below its point of no return), `total_catch`, `models` when revealed, and
 an `llm` block with call and token counts.
 
@@ -84,3 +84,15 @@ an `llm` block with call and token counts.
   bust painted at one end; long speeches shrink to fit the leaf.
 
 `players[].policy` is the full SHA-256 soul-content identifier (abbreviated above), also visible to players.
+
+## Expulsion state
+
+Council records include `vote_kind` (`expel`, `reinstate`, or null when the episode's expulsion and reinstatement
+are complete), `votes` (one `{target: slot-or-null, auto: boolean}` per seat), `passed_target` (slot or null),
+and `expelled` (the expelled slot after this council, or null). The same public ballots and results appear in
+later player observations. Votes resolve after all speeches and are published together in the `commune` event.
+
+The replay also contains current `expelled` and `expulsion_used`. `scores` is zero for an expelled seat, while
+`turns[].fish` preserves their frozen balance. An expelled seat has zero effort and catch, cannot give or receive
+gifts or punishments, and is not marked as an automatic fishing fallback. The viewer shows the ballots, outcome,
+and expelled status; its score column shows zero with the frozen balance available in the tooltip.

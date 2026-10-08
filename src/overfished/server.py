@@ -21,7 +21,7 @@ import aiohttp
 from aiohttp import web
 
 from overfished.config import GameConfig
-from overfished.engine import Action, Engine, Speech
+from overfished.engine import Action, CouncilVote, Engine, Speech
 from overfished.lifecycle import OwnershipUnsettled, cleanup_deadline, main_owned, owned_task, settle
 from overfished.llm import (
     SeatBrain,
@@ -36,6 +36,7 @@ from overfished.llm import (
     teacher_action_response,
     transport_from_env,
     turn_observation,
+    vote_observation,
 )
 from overfished.memory import (
     SCRATCHPAD_NOTE_BYTES,
@@ -312,6 +313,8 @@ class Episode:
             {"role": "user", "content": observation},
         ]
         seat.pending_observation = observation
+        if seat.slot == self.engine.expelled:
+            return Action(effort=0)
         if seat.scripted is not None:
             action = seat.scripted.act(ScriptedView.from_engine(self.engine, seat.slot))
             seat.pending_attempts = [
@@ -441,6 +444,55 @@ class Episode:
         seat.note(f"council before turn {self.engine.turn} round {round_index + 1}: says {decision.say!r}")
         return Speech(slot=seat.slot, text=decision.say)
 
+    async def vote_decision(self, seat: SeatRuntime, rounds: list[list[Speech]]) -> CouncilVote:
+        seat.pending_attempts = []
+        notebook = seat.brain.notebook if seat.brain else ""
+        observation = vote_observation(self.engine, seat.slot, notebook, rounds)
+        system = (
+            seat.brain.system_prompt
+            if seat.brain
+            else seat_system_prompt(
+                self.engine, seat.slot, seat.soul, persistent_memory=self.scratchpads is not None
+            )
+        )
+        seat.pending_observation = observation
+        seat.pending_prompt = [
+            {"role": "system", "content": system},
+            {"role": "user", "content": observation},
+        ]
+        if seat.scripted is not None:
+            seat.pending_attempts = [
+                Attempt(
+                    policy=f"scripted/{seat.scripted.name}",
+                    origin="teacher",
+                    inference_mode="text_action",
+                    prompt=seat.pending_prompt,
+                    response='{"vote": null}',
+                    parsed_action={"vote": None},
+                    accepted=True,
+                    rejection_reason=None,
+                )
+            ]
+            return CouncilVote()
+        if self.think_turns_now() < 0:
+            return CouncilVote(auto=True)
+        assert seat.brain is not None and self.transport is not None
+        seat.note(f"council ballot: observation\n{observation}")
+        decision = await decide(
+            seat.brain,
+            self.transport,
+            self.engine,
+            observation=observation,
+            council=False,
+            voting=True,
+            think_turns=self.think_turns_now(),
+            log=seat.note,
+        )
+        seat.pending_attempts = decision.attempts
+        for reply in decision.transcript:
+            seat.note(f"council ballot: raw reply\n{reply}")
+        return decision.vote or CouncilVote(auto=True)
+
     # ---- phases ----------------------------------------------------------------------
 
     def record_memory(self, seat: SeatRuntime, phase: str, action: dict, applied: bool) -> None:
@@ -496,7 +548,27 @@ class Episode:
                     }
                 )
             rounds.append(speeches)
-        record = self.engine.record_commune(rounds, order)
+        votes = None
+        if self.engine.vote_kind is not None:
+            self.phase = "voting"
+            votes = await self.parallel([self.vote_decision(seat, rounds) for seat in self.seats])
+            if self.trajectory is not None:
+                for seat, vote in zip(self.seats, votes, strict=True):
+                    self.trajectory.record(
+                        decision_id=f"ballot-{self.engine.turn}-{seat.slot}",
+                        seat=seat.slot,
+                        observation=seat.pending_observation,
+                        prompt=seat.pending_prompt,
+                        attempts=seat.pending_attempts,
+                        executed_action={
+                            "vote": self.engine.pseudonyms[vote.target] if vote.target is not None else None
+                        },
+                        fallback_origin="abstain" if vote.auto else None,
+                        terminal=False,
+                    )
+        record = self.engine.record_commune(rounds, order, votes)
+        for seat in self.seats:
+            seat.note(f"public council ballot: {record.model_dump(exclude={'rounds'})}")
         log(
             f"council before turn {record.before_turn}: {sum(1 for r in rounds for s in r if s.text)} messages"
         )
@@ -509,6 +581,8 @@ class Episode:
         record = self.engine.resolve_turn(list(actions))
         if self.trajectory is not None:
             for seat, action in zip(self.seats, actions, strict=True):
+                if seat.slot == self.engine.expelled:
+                    continue
                 self.trajectory.record(
                     decision_id=f"fishing-{record.t}-{seat.slot}",
                     seat=seat.slot,
@@ -674,7 +748,7 @@ class Episode:
         for seat in self.seats:
             brain = seat.brain
             seat.note(
-                f"episode over: {self.engine.fish[seat.slot]} fish"
+                f"episode over: score {self.engine.scores[seat.slot]}, balance {self.engine.fish[seat.slot]} fish"
                 + (
                     f"; {brain.calls} model calls, {brain.failures} failures, {brain.fallbacks} fallbacks"
                     if brain

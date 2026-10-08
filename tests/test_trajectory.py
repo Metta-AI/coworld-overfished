@@ -63,6 +63,8 @@ async def test_native_attempts_join_private_memory_speech_and_actions(
             answer = {"notebook": "PRIVATE MEMORY SENTINEL"}
         elif observation.startswith("SCRATCHPAD WRITE"):
             answer = {"scratchpad_append": "PRIVATE DURABLE SENTINEL"}
+        elif observation.startswith("COUNCIL BALLOT"):
+            answer = {"vote": None}
         elif "COUNCIL" in body["messages"][1]["content"][:60]:
             answer = {"say": "Public council sentence", "thinking": "PRIVATE THOUGHT SENTINEL"}
         elif observation.startswith("Continue privately"):

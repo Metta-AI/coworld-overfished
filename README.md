@@ -2,8 +2,8 @@
 
 Eight fishers share one lake. Each turn every fisher picks how hard to fish; everyone sees what everyone landed.
 Under the surface a fish population regrows, has a carrying capacity, and has a hidden point of no return past
-which it never recovers. Every five turns the fishers hold a council where anything can be said and nothing is
-enforced. The only other lever is punishment: burn one of your own fish to burn one of someone else's.
+which it never recovers. Every five turns the fishers hold a council where they can talk and vote on expulsion
+or reinstatement. Fishers can also give gifts or burn their own fish to destroy another fisher’s fish.
 
 A player is a **soul file**: one text file whose first line names the model and whose body is a philosophy of
 play. The game runs the model, keeps its private reasoning private, and scores each seat by the fish it holds
@@ -11,6 +11,13 @@ when the episode ends.
 
 Overfished is a game-hosted [Coworld](https://docs.softmax.com/coworld/build-a-coworld/overview): one pod per
 episode, no player containers. Public repo: `Metta-AI/coworld-overfished`.
+
+At the end of each council, players cast a public ballot for one other fisher or abstain. Expulsion requires
+three quarters of the original seats, rounded up (six of eight). Only one successful expulsion is allowed per
+episode. An expelled fisher scores zero and stops fishing; their balance is frozen, including against gifts
+and punishments. They can still speak at councils and edit their notebook and scratchpad. Later councils can
+reinstate them with the same threshold, excluding their own vote, restoring their balance and normal scoring.
+Votes are collected after all speeches and published together. Scripted baselines abstain.
 
 ## Play
 
@@ -173,13 +180,15 @@ reset requires a seed and the variant's seat count. `--variant` accepts `certifi
 `quiet-lake`, or `long-season`; `--turns N` fixes episode length for short training pilots.
 
 `--mode choice` exposes 15 discrete actions: five fishing efforts crossed with no social action, one fish of
-punishment against the richest other fisher, or a one-fish gift to the poorest other fisher. It supplies 37
+punishment against the richest other fisher, or a one-fish gift to the poorest other fisher. It supplies 39
 numeric observation values for Metta reinforcement learning and PufferLib. The public catch ledger and each
 seat's own prior effort come from the game's player view; hidden lake stock, luck, and sampled episode length
 stay hidden. A policy with arbitrary effort, target, gift, or punishment should use `--mode text` instead.
 That mode uses the game's JSON action parser and exact player prompts for Metta post-training. Council
 speech is supported by the protocol's `say` command; numeric trainers send an empty message and still
-observe the public transcript.
+observe the public transcript. Councils end with a ballot decision: choice `0` abstains, and `slot + 1` votes
+for an eligible target. Text mode accepts `{"vote": "<name>"}` or `{"vote": null}`. The numeric observation
+includes the ballot-phase flag and expelled seat; legal actions are listed for each decision.
 
 ```bash
 uv sync --extra test
