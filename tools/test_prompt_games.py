@@ -142,6 +142,8 @@ def play(
                 }
             response = call(request)
             observation = response.pop("observation")
+            if original and response["kind"] == "accepted" and "reason" in response:
+                assert response.pop("reason") == ""
             trace.update(json.dumps(response, sort_keys=True).encode())
         assert count > 0 and len(observation["scores"]) == players
         if exercise_retries:

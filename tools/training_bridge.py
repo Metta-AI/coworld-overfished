@@ -349,7 +349,6 @@ class TrainingSession:
                 self.engine,
                 self.brains[self.seat],
             ),
-            "policy": f"scripted/{policy.name}",
         }
 
     def say(self, request: dict[str, object]) -> dict[str, object]:
@@ -441,7 +440,7 @@ class TrainingSession:
         self.advance_fishing()
         return {
             "kind": "consumed_rejection" if consumed else "accepted",
-            "reason": consumed,
+            **({"reason": consumed} if consumed else {}),
             "action": action.model_dump(mode="json"),
             "observation": self.observation(),
         }
@@ -501,7 +500,7 @@ class TrainingSession:
             self.seat = self.order[0] if self.phase == "council" else 0
         return {
             "kind": "consumed_rejection" if rejected else "accepted",
-            "reason": rejected,
+            **({"reason": rejected} if rejected else {}),
             "action": action,
             "observation": self.observation(),
         }

@@ -179,7 +179,7 @@ def test_language_teacher_uses_registered_scripted_soul():
     session = TrainingSession("quiet-lake", "text", 2, souls, None)
     observation = session.reset({"seed": "teacher-policy", "players": 8})
     teacher = session.teacher()
-    assert teacher["policy"] == "scripted/greedy"
+    assert set(teacher) == {"response"}
     assert json.loads(teacher["response"])["effort"] == 1.0
     result = session.step({"decision_id": observation["decision_id"], "response": teacher["response"]})
     assert result["kind"] == "accepted"
