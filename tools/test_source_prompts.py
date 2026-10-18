@@ -111,7 +111,7 @@ def main() -> None:
                 args.baseline_root, args.output / f"{variant}-original", variant, "canonical", 0, True
             )
             compare(original, canonical, "canonical", 0)
-        cases = [(name, 0) for name in TRAIN[1:]] if variant == "pond" else []
+        cases: list[tuple[str, int]] = [(name, 0) for name in TRAIN[1:]] if variant == "pond" else []
         if variant == "long-season":
             cases.append(("mixed", 4))
         for wording, seed in cases:

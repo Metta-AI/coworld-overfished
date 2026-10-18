@@ -9,7 +9,7 @@ import os
 from pathlib import Path
 import subprocess
 import sys
-from typing import Any
+from typing import Any, TextIO, cast
 
 from overfished.memory import ScratchpadStore, policy_id
 from overfished.prompts import PromptConfig, TRAIN
@@ -53,12 +53,12 @@ def play(
         stdout=subprocess.PIPE,
         text=True,
     )
-    assert process.stdin is not None and process.stdout is not None
+    stdin, stdout = cast(TextIO, process.stdin), cast(TextIO, process.stdout)
 
     def call(request: dict[str, Any]) -> dict[str, Any]:
-        process.stdin.write(json.dumps(request) + "\n")
-        process.stdin.flush()
-        return json.loads(process.stdout.readline())
+        stdin.write(json.dumps(request) + "\n")
+        stdin.flush()
+        return json.loads(stdout.readline())
 
     selection = PromptConfig.model_validate({"promptVariant": wording, "promptSeed": prompt_seed}).resolve()
     trace = hashlib.sha256()
@@ -149,7 +149,7 @@ def play(
             )
         return trace.hexdigest()
     finally:
-        process.stdin.close()
+        stdin.close()
         assert process.wait(timeout=10) == 0
 
 
