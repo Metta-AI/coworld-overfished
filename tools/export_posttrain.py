@@ -11,6 +11,7 @@ from pathlib import Path
 
 from overfished.__main__ import stage_local_episode
 from overfished.config import GameConfig
+from overfished.prompts import TRAIN
 from overfished.lifecycle import main_owned
 from overfished.scripted import SCRIPTED_NAMES
 from overfished.server import Episode, load_seats
@@ -28,7 +29,14 @@ async def export(args: argparse.Namespace, source: str) -> None:
     if len(args.soul) != count:
         raise ValueError(f"{args.variant} requires {count} concrete soul artifacts")
     soul_paths = [path.resolve() for path in args.soul]
-    config = GameConfig.model_validate({**base, "tokens": [f"teacher-{seat}" for seat in range(count)]})
+    config = GameConfig.model_validate(
+        {
+            **base,
+            "tokens": [f"teacher-{seat}" for seat in range(count)],
+            "prompt_variant": args.prompt_variant,
+            "prompt_seed": args.prompt_seed,
+        }
+    )
     souls = [parse_soul(path.read_bytes(), config.model_aliases, set(SCRIPTED_NAMES)) for path in soul_paths]
     if not all(soul.scripted for soul in souls):
         raise ValueError("this exporter requires server-owned scripted teachers")
@@ -71,6 +79,7 @@ async def export(args: argparse.Namespace, source: str) -> None:
                 "game": "overfished",
                 "source_revision": source,
                 "variant": args.variant,
+                "prompt_configuration": config.prompt_selection.model_dump(mode="json"),
                 "configuration": config.model_dump(mode="json"),
                 "teacher_policies": [f"scripted/{soul.scripted_name}" for soul in souls],
                 "policy_ids": episode.policy_ids,
@@ -90,6 +99,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("output", type=Path)
     parser.add_argument("--games", type=int, default=10)
+    parser.add_argument("--prompt-variant", choices=(*TRAIN, "mixed"), default="canonical")
+    parser.add_argument("--prompt-seed", type=int, default=0)
     parser.add_argument("--first-seed", type=int, default=1)
     parser.add_argument("--variant", choices=[item["id"] for item in manifest()["variants"]], required=True)
     parser.add_argument("--soul", type=Path, action="append", required=True)

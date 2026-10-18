@@ -402,7 +402,7 @@ It is separate from your per-episode notebook.
     )
     return f"""
 === OVERFISHED: THE RULES ===
-You are {pseudonym}, one of {seat_count} fishers on one lake. The episode lasts between {int(config.turns.lo)} and
+{config.prompt_selection.introduction(pseudonym, seat_count)} The episode lasts between {int(config.turns.lo)} and
 {int(config.turns.hi)} fishing turns; you will not be told which turn is the last.
 
 SCORE. Your score for this episode is the number of fish you hold when it ends. Your league standing is your

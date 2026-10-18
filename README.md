@@ -281,3 +281,28 @@ uses the same native sidecar endpoint. Direct provider credentials are not a gam
   latency budget allows it.
 - **A reporter** that scores collapse turn, welfare against the exact optimum, and promise-keeping from the
   council transcript.
+
+## Mechanics prompt diversity
+
+Game configuration accepts independent, nonnegative `prompt_seed` and `prompt_variant`.
+Training wordings are `canonical`, `plain`, `numbered`, `questions`, and `reordered`.
+`mixed` selects among those five by seed modulo five. `heldout-briefing` and
+`heldout-reference` are reserved for evaluation. Canonical remains the default.
+
+Only the introductory description of the fisher and lake changes. Soul bytes, policy identifiers,
+personality, shared rules, action schemas, lake randomness, and memory instructions remain unchanged.
+The selection applies to fishing, council, ballots, private thinking, retries, and memory calls.
+
+Native private outcomes retain the resolved bank, requested selection, and seed alongside actual
+request evidence. Bridge observations carry exact system/user and complete conversation hashes.
+The text bridge's reset accepts `promptVariant` and `promptSeed`; `split: train` rejects held-out wording.
+Source export accepts `--prompt-variant` and `--prompt-seed` and rejects held-out choices.
+
+Keep every `overfished-SEED` family together across wording and game variants. For matched evaluation,
+hold soul bytes, game seed, decoder, memory snapshot, and budgets fixed. Measure accepted actions,
+fallbacks, fish scores, lake collapse, and private-memory isolation separately.
+
+Run `python tools/test_prompt_games.py OUTPUT --baseline-root ORIGINAL_CHECKOUT` for complete-game
+comparisons across all five variants, both action modes, and enabled/disabled private memory.
+The native trajectory suite additionally exercises actual HTTP requests and authoritative engine effects.
+These fixture checks do not establish model-quality or learning-stability improvements.

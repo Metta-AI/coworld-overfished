@@ -11,6 +11,7 @@ from pathlib import Path
 from pydantic import BaseModel
 
 from overfished.config import GameConfig
+from overfished.prompts import PromptConfig
 from overfished.engine import Action, CouncilVote, Engine, Gift, Punishment, Speech
 from overfished.llm import (
     InvalidReply,
@@ -69,6 +70,9 @@ class TrainingSession:
 
     def reset(self, request: dict[str, object]) -> dict[str, object]:
         reset = ResetRequest.model_validate(request)
+        self.selection = PromptConfig.model_validate(request).resolve()
+        if "split" in request and request["split"] == "train" and self.selection.variant.startswith("heldout-"):
+            raise ValueError("held-out wording is evaluation only")
         players = reset.players
         if players != len(self.base_config["players"]):
             raise ValueError(f"Variant requires {len(self.base_config['players'])} seats")
@@ -76,7 +80,12 @@ class TrainingSession:
             raise ValueError("one concrete soul artifact per training seat is required")
         seed = int.from_bytes(hashlib.sha256(reset.seed.encode()).digest()[:8], "big") or 1
         config = dict(self.base_config)
-        config.update(tokens=[f"training-{seat}" for seat in range(players)], seed=seed)
+        config.update(
+            tokens=[f"training-{seat}" for seat in range(players)],
+            seed=seed,
+            prompt_variant=self.selection.selection,
+            prompt_seed=self.selection.seed,
+        )
         if self.turns is not None:
             config["turns"] = {"lo": self.turns, "hi": self.turns}
         self.config = GameConfig.model_validate(config)
@@ -184,6 +193,9 @@ class TrainingSession:
             if not self.conversation:
                 self.conversation = messages
             messages = self.conversation
+        view["prompt_template"] = self.selection.metadata(messages)
+        if self.phase == "council":
+            view["speech_prompt_template"] = view["prompt_template"]
         common = {
             "game": "overfished",
             "decision_id": self.decision_id,

@@ -204,3 +204,10 @@ legal choices. The numeric observation has 39 values, including a ballot-phase f
 The text training bridge requires the actual soul-file roster and supports the same private scratchpad
 read/write prompts with an explicit memory directory. Numeric choice mode is a separate restricted
 research action space. Preserve the selected memory mode and source-owned policy hashes across evaluation.
+
+## Episode wording controls
+
+The host owns a five-wording mechanics introduction bank, plus two held-out evaluation wordings.
+The soul body stays byte-identical. Independent prompt seeds never consume lake randomness.
+See the README's mechanics prompt diversity section for controls and evidence fields.
+Prompt selection is not part of the soul hash or persistent-memory identity.

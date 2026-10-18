@@ -11,6 +11,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, model_validator
 
+from .prompts import PromptConfig, PromptSelection, Variant
+
 # Short names a soul file may put on its first line instead of a full OpenRouter slug.
 # Values are canonical OpenRouter slugs (vendor/model); the hosted sidecar admits any canonical slug.
 DEFAULT_MODEL_ALIASES: dict[str, str] = {
@@ -121,6 +123,15 @@ class GameConfig(BaseModel):
 
     tokens: list[str] = Field(min_length=2, max_length=16, description="Runner-injected, one per seat.")
     players: list[PlayerName] = Field(min_length=2, max_length=16, description="One display name per seat.")
+    prompt_variant: Variant = "canonical"
+    prompt_seed: int = Field(default=0, ge=0, strict=True)
+
+    @property
+    def prompt_selection(self) -> PromptSelection:
+        return PromptConfig.model_validate(
+            {"promptVariant": self.prompt_variant, "promptSeed": self.prompt_seed}
+        ).resolve()
+
     seed: int = Field(default=0, ge=0, description="0 means draw a fresh random seed at startup.")
     turns: Range = Field(
         default=Range(lo=25, hi=45),
