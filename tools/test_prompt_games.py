@@ -80,6 +80,10 @@ def play(
             continued_seen |= len(observation["messages"]) > 2
             view = observation["semantic_view"]
             messages = observation["messages"]
+            if original:
+                view["memory_mode"] = observation.pop("memory_mode")
+                if mode == "choice" and observation["kind"] == "decision":
+                    observation["typed_question"]["state"]["memory_mode"] = view["memory_mode"]
             if not original:
                 assert view.pop("prompt_template") == selection.metadata(messages)
                 if observation["speech_messages"]:

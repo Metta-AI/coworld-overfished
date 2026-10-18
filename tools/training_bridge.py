@@ -71,7 +71,11 @@ class TrainingSession:
     def reset(self, request: dict[str, object]) -> dict[str, object]:
         reset = ResetRequest.model_validate(request)
         self.selection = PromptConfig.model_validate(request).resolve()
-        if "split" in request and request["split"] == "train" and self.selection.variant.startswith("heldout-"):
+        if (
+            "split" in request
+            and request["split"] == "train"
+            and self.selection.variant.startswith("heldout-")
+        ):
             raise ValueError("held-out wording is evaluation only")
         players = reset.players
         if players != len(self.base_config["players"]):
@@ -132,6 +136,7 @@ class TrainingSession:
         last = engine.turns[-1] if engine.turns else None
         return {
             "seat": self.seat,
+            "memory_mode": "append-v1" if self.memory is not None else "disabled",
             "pseudonym": engine.pseudonyms[self.seat],
             "turn": engine.turn,
             "fish": list(engine.fish),
@@ -206,7 +211,6 @@ class TrainingSession:
             "inbox": [],
             "messages": messages,
             "speech_messages": messages if self.phase == "council" else [],
-            "memory_mode": "append-v1" if self.memory is not None else "disabled",
         }
         if self.phase in {"memory_read", "memory_write"}:
             key = "notebook" if self.phase == "memory_read" else "scratchpad_append"

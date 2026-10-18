@@ -24,7 +24,7 @@ def test_language_memory_and_notebook_use_hosted_phases(tmp_path):
     observation = session.reset({"seed": "memory-parity", "players": 8})
     reads = writes = 0
     while observation["kind"] != "terminal":
-        assert observation["memory_mode"] == "append-v1"
+        assert observation["semantic_view"]["memory_mode"] == "append-v1"
         prompt = observation["messages"][1]["content"]
         if prompt.startswith("SCRATCHPAD READ"):
             assert "PRIVATE BOOTSTRAP NOTE" in prompt
