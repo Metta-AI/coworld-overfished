@@ -81,6 +81,9 @@ def play(
             view = observation["semantic_view"]
             messages = observation["messages"]
             if original:
+                if mode == "text" and view["phase"] == "council":
+                    assert observation["speech_messages"] == messages
+                    observation["speech_messages"] = []
                 view["memory_mode"] = observation.pop("memory_mode")
                 if mode == "choice" and observation["kind"] == "decision":
                     observation["typed_question"]["state"]["memory_mode"] = view["memory_mode"]

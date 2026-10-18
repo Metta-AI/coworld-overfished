@@ -199,7 +199,7 @@ class TrainingSession:
                 self.conversation = messages
             messages = self.conversation
         view["prompt_template"] = self.selection.metadata(messages)
-        if self.phase == "council":
+        if self.phase == "council" and self.mode == "choice":
             view["speech_prompt_template"] = view["prompt_template"]
         common = {
             "game": "overfished",
@@ -210,7 +210,7 @@ class TrainingSession:
             "semantic_view": {**view, "observation": messages[1]["content"]},
             "inbox": [],
             "messages": messages,
-            "speech_messages": messages if self.phase == "council" else [],
+            "speech_messages": messages if self.phase == "council" and self.mode == "choice" else [],
         }
         if self.phase in {"memory_read", "memory_write"}:
             key = "notebook" if self.phase == "memory_read" else "scratchpad_append"
