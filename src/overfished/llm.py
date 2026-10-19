@@ -405,19 +405,7 @@ It is separate from your per-episode notebook.
 {config.prompt_selection.introduction(pseudonym, seat_count)} The episode lasts between {int(config.turns.lo)} and
 {int(config.turns.hi)} fishing turns; you will not be told which turn is the last.
 
-SCORE. Your score for this episode is the number of fish you hold when it ends. Your league standing is your
-average score across many episodes, each with a different set of fishers and a different lake. Rank within an
-episode counts for nothing.
-
-THE LAKE. The lake holds a fish population you cannot see. It regrows each turn, it has a carrying capacity,
-and it has a point of no return: fished below it, it shrinks every turn from then on and never recovers. Its
-size, growth, and point of no return differ from episode to episode.
-
-FISHING. Each turn you choose an effort from 0 to 1. Your boat lands {boat_capacity} fish at effort 1 on a
-completely full lake, and proportionally less as the lake empties: catch = effort x {boat_capacity} x fullness x
-luck, rounded to whole fish, where luck is a private factor between {config.fortune.lo:g} and {config.fortune.hi:g}
-drawn fresh for every boat every turn. If the fleet asks for more than the lake holds, what is left is shared in
-proportion to effort. Every fisher's catch each turn is public. Efforts and luck are private.
+{config.prompt_selection.resource_rules(boat_capacity, config.fortune.lo, config.fortune.hi)}
 
 PUNISHMENT. Each turn you may burn your own fish to destroy a named fisher's: each fish you burn destroys
 {config.punish_ratio} of theirs, up to what they hold. {visibility}

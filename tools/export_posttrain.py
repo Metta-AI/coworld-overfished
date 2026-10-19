@@ -44,7 +44,14 @@ async def export(args: argparse.Namespace, source: str) -> None:
     output = args.output.resolve()
     output.mkdir(mode=0o700)
     runs = []
-    for seed in range(args.first_seed, args.first_seed + args.games):
+    for offset, seed in enumerate(range(args.first_seed, args.first_seed + args.games)):
+        episode_config = config.model_copy(
+            update={
+                "prompt_seed": args.prompt_seed + offset
+                if args.prompt_variant == "mixed"
+                else args.prompt_seed
+            }
+        )
         episode_id = f"overfished-{args.variant}-{seed}"
         episode_dir = output / episode_id
         os.environ.update(
@@ -53,8 +60,8 @@ async def export(args: argparse.Namespace, source: str) -> None:
             COWORLD_SOURCE_REVISION=source,
             COGAME_SAVE_TRAJECTORY_URI=(episode_dir / "complete-episode.jsonl").as_uri(),
         )
-        seats_path, artifacts = stage_local_episode(config, soul_paths, episode_dir)
-        episode = Episode.from_seats(config, seed, load_seats(seats_path.as_uri()), None, artifacts)
+        seats_path, artifacts = stage_local_episode(episode_config, soul_paths, episode_dir)
+        episode = Episode.from_seats(episode_config, seed, load_seats(seats_path.as_uri()), None, artifacts)
         await episode.run()
         episode.finalize()
         assert episode.engine.finished and episode.trajectory is not None
@@ -65,6 +72,7 @@ async def export(args: argparse.Namespace, source: str) -> None:
             {
                 "episode_id": episode_id,
                 "seed": seed,
+                "prompt_configuration": episode_config.prompt_selection.model_dump(mode="json"),
                 "seed_family": f"overfished-{seed}",
                 "decisions": episode.trajectory.decision_count,
                 "complete_episode_file": str(corpus),

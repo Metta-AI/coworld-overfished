@@ -10,7 +10,7 @@ from pathlib import Path
 import subprocess
 import sys
 
-from overfished.prompts import PromptConfig, TRAIN
+from overfished.prompts import PromptConfig
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -51,11 +51,13 @@ def export(root: Path, output: Path, variant: str, wording: str, seed: int, orig
 
 
 def compare(reference: dict, candidate: dict, wording: str, seed: int) -> None:
-    selection = PromptConfig.model_validate({"promptVariant": wording, "promptSeed": seed}).resolve()
     assert reference["policy_ids"] == candidate["policy_ids"]
     assert reference["teacher_policies"] == candidate["teacher_policies"]
     assert reference["memory_mode"] == candidate["memory_mode"] == "disabled"
     for old_run, new_run in zip(reference["runs"], candidate["runs"], strict=True):
+        selection = PromptConfig.model_validate(
+            {"promptVariant": wording, "promptSeed": new_run["prompt_configuration"]["seed"]}
+        ).resolve()
         before = json.loads(Path(old_run["complete_episode_file"]).read_text())
         after = json.loads(Path(new_run["complete_episode_file"]).read_text())
         assert before["episode"]["status"] == after["episode"]["status"] == "completed"
@@ -93,6 +95,11 @@ def compare(reference: dict, candidate: dict, wording: str, seed: int) -> None:
             new["prompt"][0]["content"] = (
                 prefix + "=== OVERFISHED: THE RULES ===\n" + canonical + rules[len(intro) :]
             )
+            if wording != "canonical":
+                values = (replay["game"]["boat_capacity"], *replay["game"]["fortune"])
+                new["prompt"][0]["content"] = new["prompt"][0]["content"].replace(
+                    selection.resource_rules(*values), PromptConfig().resolve().resource_rules(*values), 1
+                )
             assert old["prompt"] == new["prompt"]
         del before, after
     print(candidate["variant"], wording, seed, "ten production source comparisons PASS", flush=True)
@@ -111,9 +118,7 @@ def main() -> None:
                 args.baseline_root, args.output / f"{variant}-original", variant, "canonical", 0, True
             )
             compare(original, canonical, "canonical", 0)
-        cases: list[tuple[str, int]] = [(name, 0) for name in TRAIN[1:]] if variant == "pond" else []
-        if variant == "long-season":
-            cases.append(("mixed", 4))
+        cases = [("mixed", 0)]
         for wording, seed in cases:
             candidate = export(ROOT, args.output / f"{variant}-{wording}", variant, wording, seed)
             compare(canonical, candidate, wording, seed)

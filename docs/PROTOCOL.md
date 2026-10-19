@@ -207,7 +207,7 @@ research action space. Preserve the selected memory mode and source-owned policy
 
 ## Episode wording controls
 
-The host owns a five-wording mechanics introduction bank, plus two held-out evaluation wordings.
+The host owns a five-wording mechanics wording bank, plus two held-out evaluation wordings.
 The soul body stays byte-identical. Independent prompt seeds never consume lake randomness.
 See the README's mechanics prompt diversity section for controls and evidence fields.
 Prompt selection is not part of the soul hash or persistent-memory identity.

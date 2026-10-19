@@ -289,14 +289,16 @@ Training wordings are `canonical`, `plain`, `numbered`, `questions`, and `reorde
 `mixed` selects among those five by seed modulo five. `heldout-briefing` and
 `heldout-reference` are reserved for evaluation. Canonical remains the default.
 
-Only the introductory description of the fisher and lake changes. Soul bytes, policy identifiers,
-personality, shared rules, action schemas, lake randomness, and memory instructions remain unchanged.
+The v2 bank varies score, hidden-lake, and catch explanations and their order. Canonical prompt bytes, soul bytes,
+policy identifiers, council and sanction rules, action schemas, lake randomness, and memory instructions remain unchanged.
 The selection applies to fishing, council, ballots, private thinking, retries, and memory calls.
 
 Native private outcomes retain the resolved bank, requested selection, and seed alongside actual
 request evidence. Bridge observations carry exact system/user and complete conversation hashes.
 The text bridge's reset accepts `promptVariant` and `promptSeed`; `split: train` rejects held-out wording.
 Source export accepts `--prompt-variant` and `--prompt-seed` and rejects held-out choices.
+Mixed exports advance the wording seed once per game and record each resolved selection. The importer owns
+dataset splits; raw-corpus coverage alone does not establish five-wording coverage in training.
 
 Keep every `overfished-SEED` family together across wording and game variants. For matched evaluation,
 hold soul bytes, game seed, decoder, memory snapshot, and budgets fixed. Measure accepted actions,
