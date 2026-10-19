@@ -37,7 +37,9 @@ def play(
         if variant == "certification"
         else next(item["game_config"] for item in manifest["variants"] if item["id"] == variant)
     )
-    game_config = GameConfig.model_validate(config)
+    game_config = GameConfig.model_validate(
+        {**config, "tokens": [f"fixture-{seat}" for seat in range(len(config["players"]))]}
+    )
     players = len(config["players"])
     souls = [root / ("souls/examples/villager.md" if memory_path else "souls/steady.md")] * players
     if memory_path:
