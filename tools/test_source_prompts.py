@@ -142,7 +142,7 @@ def main() -> None:
         )
         assert result.returncode != 0 and "invalid choice" in result.stderr
         assert not (args.output / wording).exists()
-    print("90 source games, all variants and training wordings, held-out exclusion PASS", flush=True)
+    print("80 source games, all variants and training wordings, held-out exclusion PASS", flush=True)
 
 
 if __name__ == "__main__":
