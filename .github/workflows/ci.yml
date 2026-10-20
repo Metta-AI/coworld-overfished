@@ -8,7 +8,7 @@ permissions:
 jobs:
   native-training:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -17,7 +17,7 @@ jobs:
       - uses: astral-sh/setup-uv@v6
       - run: uv sync --locked --extra test
       - run: uv run --no-sync python -m pytest -q
-      - name: Production teacher complete episodes
-        run: |
-          uv run --no-sync python -m tools.export_posttrain "$RUNNER_TEMP/overfished-teacher" --variant pond --games 10 \
-            --soul souls/steady.md --soul souls/greedy.md --soul souls/enforcer.md --soul souls/steady.md
+      - name: Complete prompt wording games
+        run: uv run --no-sync python tools/test_prompt_games.py "$RUNNER_TEMP/overfished-prompts"
+      - name: Production source wording comparisons
+        run: uv run --no-sync python tools/test_source_prompts.py "$RUNNER_TEMP/overfished-source-prompts"

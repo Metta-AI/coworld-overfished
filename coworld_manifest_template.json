@@ -201,6 +201,34 @@
           "title": "Players",
           "type": "array"
         },
+        "prompt_variant": {
+          "anyOf": [
+            {
+              "enum": [
+                "canonical",
+                "plain",
+                "numbered",
+                "questions",
+                "reordered",
+                "heldout-briefing",
+                "heldout-reference"
+              ],
+              "type": "string"
+            },
+            {
+              "const": "mixed",
+              "type": "string"
+            }
+          ],
+          "default": "canonical",
+          "title": "Prompt Variant"
+        },
+        "prompt_seed": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Prompt Seed",
+          "type": "integer"
+        },
         "seed": {
           "default": 0,
           "description": "0 means draw a fresh random seed at startup.",

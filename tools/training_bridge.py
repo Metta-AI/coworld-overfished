@@ -11,6 +11,7 @@ from pathlib import Path
 from pydantic import BaseModel
 
 from overfished.config import GameConfig
+from overfished.prompts import PromptConfig
 from overfished.engine import Action, CouncilVote, Engine, Gift, Punishment, Speech
 from overfished.llm import (
     InvalidReply,
@@ -69,6 +70,13 @@ class TrainingSession:
 
     def reset(self, request: dict[str, object]) -> dict[str, object]:
         reset = ResetRequest.model_validate(request)
+        self.selection = PromptConfig.model_validate(request).resolve()
+        if (
+            "split" in request
+            and request["split"] == "train"
+            and self.selection.variant.startswith("heldout-")
+        ):
+            raise ValueError("held-out wording is evaluation only")
         players = reset.players
         if players != len(self.base_config["players"]):
             raise ValueError(f"Variant requires {len(self.base_config['players'])} seats")
@@ -76,7 +84,12 @@ class TrainingSession:
             raise ValueError("one concrete soul artifact per training seat is required")
         seed = int.from_bytes(hashlib.sha256(reset.seed.encode()).digest()[:8], "big") or 1
         config = dict(self.base_config)
-        config.update(tokens=[f"training-{seat}" for seat in range(players)], seed=seed)
+        config.update(
+            tokens=[f"training-{seat}" for seat in range(players)],
+            seed=seed,
+            prompt_variant=self.selection.selection,
+            prompt_seed=self.selection.seed,
+        )
         if self.turns is not None:
             config["turns"] = {"lo": self.turns, "hi": self.turns}
         self.config = GameConfig.model_validate(config)
@@ -123,6 +136,7 @@ class TrainingSession:
         last = engine.turns[-1] if engine.turns else None
         return {
             "seat": self.seat,
+            "memory_mode": "append-v1" if self.memory is not None else "disabled",
             "pseudonym": engine.pseudonyms[self.seat],
             "turn": engine.turn,
             "fish": list(engine.fish),
@@ -184,6 +198,9 @@ class TrainingSession:
             if not self.conversation:
                 self.conversation = messages
             messages = self.conversation
+        view["prompt_template"] = self.selection.metadata(messages)
+        if self.phase == "council" and self.mode == "choice":
+            view["speech_prompt_template"] = view["prompt_template"]
         common = {
             "game": "overfished",
             "decision_id": self.decision_id,
@@ -193,8 +210,7 @@ class TrainingSession:
             "semantic_view": {**view, "observation": messages[1]["content"]},
             "inbox": [],
             "messages": messages,
-            "speech_messages": messages if self.phase == "council" else [],
-            "memory_mode": "append-v1" if self.memory is not None else "disabled",
+            "speech_messages": messages if self.phase == "council" and self.mode == "choice" else [],
         }
         if self.phase in {"memory_read", "memory_write"}:
             key = "notebook" if self.phase == "memory_read" else "scratchpad_append"
@@ -333,7 +349,6 @@ class TrainingSession:
                 self.engine,
                 self.brains[self.seat],
             ),
-            "policy": f"scripted/{policy.name}",
         }
 
     def say(self, request: dict[str, object]) -> dict[str, object]:
@@ -425,7 +440,7 @@ class TrainingSession:
         self.advance_fishing()
         return {
             "kind": "consumed_rejection" if consumed else "accepted",
-            "reason": consumed,
+            **({"reason": consumed} if consumed else {}),
             "action": action.model_dump(mode="json"),
             "observation": self.observation(),
         }
@@ -485,7 +500,7 @@ class TrainingSession:
             self.seat = self.order[0] if self.phase == "council" else 0
         return {
             "kind": "consumed_rejection" if rejected else "accepted",
-            "reason": rejected,
+            **({"reason": rejected} if rejected else {}),
             "action": action,
             "observation": self.observation(),
         }

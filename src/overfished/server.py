@@ -698,6 +698,7 @@ class Episode:
                         outcome={
                             "interrupted": True,
                             "runtime_configuration": self.config.model_dump(mode="json"),
+                            "prompt_configuration": self.config.prompt_selection.model_dump(mode="json"),
                             "seed": self.engine.seed,
                             "engine_effects": EngineEffects(
                                 lake=self.engine.lake,
@@ -728,6 +729,7 @@ class Episode:
                 outcome={
                     **results,
                     "runtime_configuration": self.config.model_dump(mode="json"),
+                    "prompt_configuration": self.config.prompt_selection.model_dump(mode="json"),
                     "seed": self.engine.seed,
                     "policy_ids": self.policy_ids,
                     "memory_mode": "append-v1" if self.scratchpads is not None else "disabled",

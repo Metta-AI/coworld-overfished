@@ -24,7 +24,7 @@ def test_language_memory_and_notebook_use_hosted_phases(tmp_path):
     observation = session.reset({"seed": "memory-parity", "players": 8})
     reads = writes = 0
     while observation["kind"] != "terminal":
-        assert observation["memory_mode"] == "append-v1"
+        assert observation["semantic_view"]["memory_mode"] == "append-v1"
         prompt = observation["messages"][1]["content"]
         if prompt.startswith("SCRATCHPAD READ"):
             assert "PRIVATE BOOTSTRAP NOTE" in prompt
@@ -179,7 +179,7 @@ def test_language_teacher_uses_registered_scripted_soul():
     session = TrainingSession("quiet-lake", "text", 2, souls, None)
     observation = session.reset({"seed": "teacher-policy", "players": 8})
     teacher = session.teacher()
-    assert teacher["policy"] == "scripted/greedy"
+    assert set(teacher) == {"response"}
     assert json.loads(teacher["response"])["effort"] == 1.0
     result = session.step({"decision_id": observation["decision_id"], "response": teacher["response"]})
     assert result["kind"] == "accepted"

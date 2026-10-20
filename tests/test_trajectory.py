@@ -8,6 +8,11 @@ from aiohttp import web
 from test_episode import SOULS, VILLAGER, run_episode
 
 from overfished.llm import Transport
+from overfished.config import GameConfig
+from overfished.__main__ import stage_local_episode
+from overfished.server import Episode, load_seats
+from overfished.prompts import PromptConfig, TRAIN
+from tools.gen_manifest import manifest
 from overfished.trajectory import Attempt, Trajectory
 
 SOURCE_REVISION = (
@@ -48,10 +53,20 @@ def test_recorder_rejects_applied_action_mismatch(tmp_path):
         )
 
 
-@pytest.mark.parametrize("sampled", [False, True])
+@pytest.mark.parametrize(
+    "sampled, variant, wording, memory",
+    [(False, "diagnostic", "canonical", True), (True, "diagnostic", "canonical", True)]
+    + [(False, "village", wording, True) for wording in (*TRAIN, "heldout-briefing", "heldout-reference")]
+    + [
+        (False, variant, "mixed", True)
+        for variant in ("certification", "village", "pond", "quiet-lake", "long-season")
+    ]
+    + [(False, "village", "canonical", False)],
+)
 async def test_native_attempts_join_private_memory_speech_and_actions(
-    tmp_path, monkeypatch, unused_tcp_port, sampled
+    tmp_path, monkeypatch, unused_tcp_port, sampled, variant, wording, memory
 ):
+    selection = PromptConfig.model_validate({"promptVariant": wording, "promptSeed": 4}).resolve()
     archives = {}
 
     async def complete(request):
@@ -120,25 +135,77 @@ async def test_native_attempts_join_private_memory_speech_and_actions(
     monkeypatch.setenv("COWORLD_LLM_TEMPERATURE", "1" if sampled else "0")
     try:
         transport = Transport(base_url=f"http://127.0.0.1:{unused_tcp_port}", timeout_seconds=2)
-        results, replay, _ = await run_episode(
-            tmp_path, [VILLAGER, SOULS / "steady.md"], transport, turns=2, commune_every=3
-        )
+        if variant == "diagnostic":
+            model_seats = 1
+            results, replay, _ = await run_episode(
+                tmp_path,
+                [VILLAGER, SOULS / "steady.md"],
+                transport,
+                turns=2,
+                commune_every=3,
+                prompt_variant=wording,
+                prompt_seed=4,
+            )
+        else:
+            catalog = manifest()
+            base = (
+                catalog["certification"]["game_config"]
+                if variant == "certification"
+                else next(item["game_config"] for item in catalog["variants"] if item["id"] == variant)
+            )
+            model_seats = len(base["players"])
+            souls = [VILLAGER] * model_seats
+            config = GameConfig.model_validate(
+                {
+                    **base,
+                    "tokens": [f"fixture-{slot}" for slot in range(model_seats)],
+                    "prompt_variant": wording,
+                    "prompt_seed": 4,
+                }
+            )
+            transport.timeout_seconds = config.llm.timeout_seconds
+            seats_path, artifacts = stage_local_episode(config, souls, tmp_path)
+            episode = Episode.from_seats(
+                config,
+                7,
+                load_seats(seats_path.resolve().as_uri()),
+                transport,
+                artifacts,
+                tmp_path / "memory" if memory else None,
+            )
+            await episode.run()
+            episode.finalize()
+            results = json.loads((tmp_path / "results.json").read_text())
+            replay = json.loads((tmp_path / "replay").read_text())
+
     finally:
         await runner.cleanup()
     complete = json.loads(trajectory.read_text())
     records = complete["decisions"] + [complete["episode"]]
     assert records[-1]["outcome"]["scores"] == results["scores"]
+    assert records[-1]["outcome"]["prompt_configuration"] == selection.model_dump(mode="json")
     attempts = [a for r in records[:-1] for a in r["attempts"] if a["origin"] == "model"]
     archive_path = tmp_path / "native-call-archives.json"
     archive_path.write_text(json.dumps(archives) + "\n")
     archive_path.chmod(0o600)
     assert len(attempts) == len(archives)
     assert {a["platform_call_id"] for a in attempts} == set(archives)
-    assert {a["inference_mode"] for a in attempts} == {"memory", "speech", "text_action"}
+    expected_modes = {"text_action"}
+    if memory:
+        expected_modes.add("memory")
+    if replay["communes"]:
+        expected_modes.add("speech")
+    assert {a["inference_mode"] for a in attempts} == expected_modes
     for attempt in attempts:
         slot, request, response = archives[attempt["platform_call_id"]]
         assert attempt["request"] == request and json.loads(attempt["raw_response"]) == response
-        assert attempt["prompt"] == request["messages"] and slot == "0"
+        assert attempt["prompt"] == request["messages"]
+        assert 0 <= int(slot) < model_seats
+        name = replay["players"][int(slot)]["pseudonym"]
+        assert selection.introduction(name, len(replay["players"])) in request["messages"][0]["content"]
+        assert request["messages"][0]["content"].startswith(
+            VILLAGER.read_text().partition("\n")[2].strip() + "\n\n"
+        )
         assert attempt["model"] == "fixture/actually-served"
         assert attempt["model_identity"] == "a" * 64
         if sampled:
@@ -146,7 +213,7 @@ async def test_native_attempts_join_private_memory_speech_and_actions(
             assert attempt["sampled_token_ids"] == [3, 4] and attempt["behavior_logprobs"] == [-0.5, -0.6]
         else:
             assert attempt["sampled_token_ids"] is None and attempt["behavior_logprobs"] is None
-    assert sum(not a["accepted"] for a in attempts) == 2
+    assert sum(not a["accepted"] for a in attempts) == results["turns_played"] * model_seats
     for record in records[:-1]:
         selected = next(a for a in record["attempts"] if a["attempt_id"] == record["selected_attempt_id"])
         assert selected["parsed_action"] == record["executed_action"]
