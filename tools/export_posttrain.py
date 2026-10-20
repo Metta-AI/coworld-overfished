@@ -52,7 +52,8 @@ async def export(args: argparse.Namespace, source: str) -> None:
                 else args.prompt_seed
             }
         )
-        episode_id = f"overfished-{args.variant}-{seed}"
+        selection = episode_config.prompt_selection
+        episode_id = f"overfished-{args.variant}-{seed}-{selection.variant}-{selection.seed}"
         episode_dir = output / episode_id
         os.environ.update(
             COWORLD_EPISODE_ID=episode_id,

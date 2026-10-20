@@ -58,6 +58,8 @@ def compare(reference: dict, candidate: dict, wording: str, seed: int) -> None:
         selection = PromptConfig.model_validate(
             {"promptVariant": wording, "promptSeed": new_run["prompt_configuration"]["seed"]}
         ).resolve()
+        if selection.variant != "canonical":
+            assert old_run["episode_id"] != new_run["episode_id"]
         before = json.loads(Path(old_run["complete_episode_file"]).read_text())
         after = json.loads(Path(new_run["complete_episode_file"]).read_text())
         assert before["episode"]["status"] == after["episode"]["status"] == "completed"

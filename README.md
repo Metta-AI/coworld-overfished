@@ -297,7 +297,8 @@ Native private outcomes retain the resolved bank, requested selection, and seed 
 request evidence. Bridge observations carry exact system/user and complete conversation hashes.
 The text bridge's reset accepts `promptVariant` and `promptSeed`; `split: train` rejects held-out wording.
 Source export accepts `--prompt-variant` and `--prompt-seed` and rejects held-out choices.
-Mixed exports advance the wording seed once per game and record each resolved selection. The importer owns
+Mixed exports advance the wording seed once per game and record each resolved selection.
+Episode IDs include the selected wording and prompt seed to distinguish matched collections. The importer owns
 dataset splits; raw-corpus coverage alone does not establish five-wording coverage in training.
 
 Keep every `overfished-SEED` family together across wording and game variants. For matched evaluation,
