@@ -64,8 +64,8 @@ async def test_actual_native_body_headers_and_private_errors(failure):
             assert attempt.model == "actual/served"
         assert received[0][0]["x-coworld-player-slot"] == "3"
         assert "authorization" not in received[0][0]
-        assert received[0][1]["temperature"] == 1
-        assert received[0][1]["top_p"] == 1
+        assert "temperature" not in received[0][1]
+        assert "top_p" not in received[0][1]
         assert attempt.raw_response == raw.decode()
         assert base64.b64decode(attempt.response_body_b64, validate=True) == raw
         assert attempt.http_status == (429 if failure else 200)
@@ -124,6 +124,7 @@ class UncancelledFuture(asyncio.Future):
 @pytest.mark.parametrize("sampling", [True, False])
 async def test_long_context_actual_native_sampling_and_greedy_null(sampling, monkeypatch):
     monkeypatch.setenv("COWORLD_LLM_TEMPERATURE", "1" if sampling else "0")
+    monkeypatch.setenv("COWORLD_LLM_TOP_P", "1")
     sample = {
         "policy_revision": "synthetic-model",
         "tokenizer_revision": "synthetic-tokenizer",

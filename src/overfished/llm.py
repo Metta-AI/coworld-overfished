@@ -59,15 +59,15 @@ class NativeRequest(BaseModel):
     messages: list[NativeMessage]
     max_tokens: StrictInt = Field(gt=0)
     stream: Literal[False] = False
-    temperature: float = Field(ge=0, le=1)
-    top_p: float = Field(gt=0, le=1)
+    temperature: float | None = Field(default=None, ge=0, le=1)
+    top_p: float | None = Field(default=None, gt=0, le=1)
     reasoning: dict[str, JsonValue] | None = None
 
 
 class NativeDecoder(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True, allow_inf_nan=False, hide_input_in_errors=True)
-    temperature: float = Field(ge=0, le=1)
-    top_p: float = Field(gt=0, le=1)
+    temperature: float | None = Field(default=None, ge=0, le=1)
+    top_p: float | None = Field(default=None, gt=0, le=1)
     max_tokens: StrictInt = Field(gt=0)
     reasoning: dict[str, JsonValue] | None
     timeout_ms: float = Field(gt=0)
@@ -147,8 +147,8 @@ class CompletionResponse(BaseModel):
 class Transport:
     base_url: str
     timeout_seconds: float
-    temperature: float = field(init=False)
-    top_p: float = field(init=False)
+    temperature: float | None = field(init=False)
+    top_p: float | None = field(init=False)
     calls: int = 0
     prompt_tokens: int = 0
     completion_tokens: int = 0
@@ -159,8 +159,10 @@ class Transport:
         if not math.isfinite(self.timeout_seconds) or self.timeout_seconds <= 0:
             raise ValueError("native timeout must be finite and positive")
         self.base_url = self.base_url.rstrip("/")
-        self.temperature = float(os.environ.get("COWORLD_LLM_TEMPERATURE", "1"))
-        self.top_p = float(os.environ.get("COWORLD_LLM_TOP_P", "1"))
+        temperature = os.environ.get("COWORLD_LLM_TEMPERATURE")
+        top_p = os.environ.get("COWORLD_LLM_TOP_P")
+        self.temperature = float(temperature) if temperature is not None else None
+        self.top_p = float(top_p) if top_p is not None else None
         NativeDecoder(
             temperature=self.temperature,
             top_p=self.top_p,

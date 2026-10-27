@@ -7,13 +7,13 @@ import pytest
 from aiohttp import web
 from test_episode import SOULS, VILLAGER, run_episode
 
-from overfished.llm import Transport
-from overfished.config import GameConfig
 from overfished.__main__ import stage_local_episode
+from overfished.config import GameConfig
+from overfished.llm import Transport
+from overfished.prompts import TRAIN, PromptConfig
 from overfished.server import Episode, load_seats
-from overfished.prompts import PromptConfig, TRAIN
-from tools.gen_manifest import manifest
 from overfished.trajectory import Attempt, Trajectory
+from tools.gen_manifest import manifest
 
 SOURCE_REVISION = (
     os.environ["COWORLD_SOURCE_REVISION"]
@@ -133,6 +133,7 @@ async def test_native_attempts_join_private_memory_speech_and_actions(
     monkeypatch.setenv("COWORLD_SOURCE_REVISION", SOURCE_REVISION)
     monkeypatch.delenv("COWORLD_GAME_IMAGE_DIGEST", raising=False)
     monkeypatch.setenv("COWORLD_LLM_TEMPERATURE", "1" if sampled else "0")
+    monkeypatch.setenv("COWORLD_LLM_TOP_P", "1")
     try:
         transport = Transport(base_url=f"http://127.0.0.1:{unused_tcp_port}", timeout_seconds=2)
         if variant == "diagnostic":
