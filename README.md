@@ -136,12 +136,12 @@ turns drop to zero, past it every seat plays the fallback, applied to all seats 
 
 ## Variants
 
-| Variant | Seats | Turns | Notes |
-| --- | --- | --- | --- |
-| `village` | 8 | 25 to 45 | League default. Council before turn 1 and after every 5 turns. |
-| `pond` | 4 | 20 to 30 | Cheap smoke variant for trying a soul. |
-| `quiet-lake` | 8 | 25 to 45 | No council. Only the ledger and punishment carry signal. |
-| `long-season` | 8 | 80 to 120 | For local experiments; the wall budget cuts thinking, then goes scripted, if models are slow. |
+| Variant       | Seats | Turns     | Notes                                                                                         |
+| ------------- | ----- | --------- | --------------------------------------------------------------------------------------------- |
+| `village`     | 8     | 25 to 45  | League default. Council before turn 1 and after every 5 turns.                                |
+| `pond`        | 4     | 20 to 30  | Cheap smoke variant for trying a soul.                                                        |
+| `quiet-lake`  | 8     | 25 to 45  | No council. Only the ledger and punishment carry signal.                                      |
+| `long-season` | 8     | 80 to 120 | For local experiments; the wall budget cuts thinking, then goes scripted, if models are slow. |
 
 Leaderboard intent: a policy's standing is its mean score across episodes of the same variant, and only
 same-variant scores are comparable (a 100-turn lake pays out more than a 30-turn one); length variance within a
@@ -165,12 +165,12 @@ Stream format and replay schema: [docs/GLOBAL.md](docs/GLOBAL.md).
 
 ## Artifacts
 
-| File | Contents |
-| --- | --- |
-| `logs/policy_agent_<slot>.log` | Private to the seat: observations, thinking, raw replies, notebook updates, fallbacks. |
-| `replay` | Public: efforts, catches, punishments, fish counts, council speech, the sampled lake. No thoughts. |
-| `results.json` | `scores` per slot, pseudonyms, final stock, whether the lake collapsed, models, model-call totals. |
-| `player_status.json` | Seat lifecycle snapshot. |
+| File                           | Contents                                                                                           |
+| ------------------------------ | -------------------------------------------------------------------------------------------------- |
+| `logs/policy_agent_<slot>.log` | Private to the seat: observations, thinking, raw replies, notebook updates, fallbacks.             |
+| `replay`                       | Public: efforts, catches, punishments, fish counts, council speech, the sampled lake. No thoughts. |
+| `results.json`                 | `scores` per slot, pseudonyms, final stock, whether the lake collapsed, models, model-call totals. |
+| `player_status.json`           | Seat lifecycle snapshot.                                                                           |
 
 ## Train locally
 
@@ -209,7 +209,9 @@ started, unapplied native attempts separately. Received bodies stay exact bytes;
 remain private auxiliary evidence. Public replay excludes notebooks, thinking, prompts, and native metadata.
 
 Native game-hosted learner calls use `/v1/chat/completions` and their actual seat header.
-`COWORLD_LLM_TEMPERATURE` and `COWORLD_LLM_TOP_P` freeze when the transport starts; both default to one.
+`COWORLD_LLM_TEMPERATURE` and `COWORLD_LLM_TOP_P` freeze when the transport starts. Unset controls are omitted
+so each provider can use its supported defaults; private decoder evidence records them as null, not guessed values.
+Set both explicitly to one when qualifying full-softmax sampled-token evidence. Unsupported explicit controls remain errors.
 A registered checkpoint soul uses `#!checkpoint/<sha256>`. For a checkpoint without hidden reasoning,
 select an explicit game configuration containing `"llm":{"reasoning":{}}`; ordinary provider settings
 remain unchanged. Base and trained evaluation must use the same configuration and memory mode.
